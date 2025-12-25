@@ -11,10 +11,22 @@ class ReinsService {
 
   async initBrowser() {
     if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        headless: process.env.HEADLESS === 'true',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
+      const options = {
+        headless: process.env.HEADLESS !== 'false',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu'
+        ]
+      };
+
+      // Use system Chromium in Docker/production
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        options.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+
+      this.browser = await puppeteer.launch(options);
     }
     return this.browser;
   }
