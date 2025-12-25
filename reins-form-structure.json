@@ -1,0 +1,2384 @@
+{
+  "selects": [
+    {
+      "index": 0,
+      "id": "__BVID__266",
+      "name": "",
+      "label": "",
+      "optionCount": 51,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "01:　大木　石川様　グランドピアノ"
+        },
+        {
+          "value": "02",
+          "text": "02:　大木　甲斐田様　住吉、両国"
+        },
+        {
+          "value": "03",
+          "text": "03:　山中様　北湯口"
+        },
+        {
+          "value": "04",
+          "text": "04:　大木　ゴート様"
+        },
+        {
+          "value": "05",
+          "text": "05:　亀有"
+        },
+        {
+          "value": "06",
+          "text": "06:"
+        },
+        {
+          "value": "07",
+          "text": "07:"
+        },
+        {
+          "value": "08",
+          "text": "08:"
+        },
+        {
+          "value": "09",
+          "text": "09:"
+        },
+        {
+          "value": "10",
+          "text": "10:　大木　加藤様　副都心線"
+        },
+        {
+          "value": "11",
+          "text": "11:　松戸市　前日　根本"
+        },
+        {
+          "value": "12",
+          "text": "12:■松戸市　前日　根本"
+        },
+        {
+          "value": "13",
+          "text": "13:　松戸市　当日　根本"
+        },
+        {
+          "value": "14",
+          "text": "14:　鎌ヶ谷市　当日　根本"
+        },
+        {
+          "value": "15",
+          "text": "15:　柏市　当日　根本"
+        },
+        {
+          "value": "16",
+          "text": "16:　工藤さん"
+        },
+        {
+          "value": "17",
+          "text": "17:　渡邉様"
+        },
+        {
+          "value": "18",
+          "text": "18:　大木　植林様　中目黒近辺"
+        },
+        {
+          "value": "19",
+          "text": "19:"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "id": "__BVID__277",
+      "name": "",
+      "label": "",
+      "optionCount": 51,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "01:　大木　石川様　グランドピアノ"
+        },
+        {
+          "value": "02",
+          "text": "02:　大木　甲斐田様　住吉、両国"
+        },
+        {
+          "value": "03",
+          "text": "03:　山中様　北湯口"
+        },
+        {
+          "value": "04",
+          "text": "04:　大木　ゴート様"
+        },
+        {
+          "value": "05",
+          "text": "05:　亀有"
+        },
+        {
+          "value": "06",
+          "text": "06:"
+        },
+        {
+          "value": "07",
+          "text": "07:"
+        },
+        {
+          "value": "08",
+          "text": "08:"
+        },
+        {
+          "value": "09",
+          "text": "09:"
+        },
+        {
+          "value": "10",
+          "text": "10:　大木　加藤様　副都心線"
+        },
+        {
+          "value": "11",
+          "text": "11:　松戸市　前日　根本"
+        },
+        {
+          "value": "12",
+          "text": "12:■松戸市　前日　根本"
+        },
+        {
+          "value": "13",
+          "text": "13:　松戸市　当日　根本"
+        },
+        {
+          "value": "14",
+          "text": "14:　鎌ヶ谷市　当日　根本"
+        },
+        {
+          "value": "15",
+          "text": "15:　柏市　当日　根本"
+        },
+        {
+          "value": "16",
+          "text": "16:　工藤さん"
+        },
+        {
+          "value": "17",
+          "text": "17:　渡邉様"
+        },
+        {
+          "value": "18",
+          "text": "18:　大木　植林様　中目黒近辺"
+        },
+        {
+          "value": "19",
+          "text": "19:"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "id": "__BVID__288",
+      "name": "",
+      "label": "",
+      "optionCount": 9,
+      "options": [
+        {
+          "value": "0",
+          "text": "最新順（最終更新年月日＋物件番号）"
+        },
+        {
+          "value": "3",
+          "text": "価格/賃料"
+        },
+        {
+          "value": "4",
+          "text": "土地面積"
+        },
+        {
+          "value": "5",
+          "text": "面積（建物・専有・使用部分）"
+        },
+        {
+          "value": "9",
+          "text": "㎡単価"
+        },
+        {
+          "value": "8",
+          "text": "坪単価"
+        },
+        {
+          "value": "1",
+          "text": "所在地"
+        },
+        {
+          "value": "10",
+          "text": "建物名"
+        },
+        {
+          "value": "2",
+          "text": "沿線駅"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "id": "__BVID__290",
+      "name": "",
+      "label": "▲▼",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "0",
+          "text": "▲"
+        },
+        {
+          "value": "1",
+          "text": "▼"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "id": "__BVID__293",
+      "name": "",
+      "label": "賃貸土地賃貸一戸建賃貸マンション賃貸外全(住宅以外建物全部)賃貸外一(住宅以外建物一部)",
+      "optionCount": 6,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "賃貸土地"
+        },
+        {
+          "value": "02",
+          "text": "賃貸一戸建"
+        },
+        {
+          "value": "03",
+          "text": "賃貸マンション"
+        },
+        {
+          "value": "04",
+          "text": "賃貸外全(住宅以外建物全部)"
+        },
+        {
+          "value": "05",
+          "text": "賃貸外一(住宅以外建物一部)"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "id": "__BVID__296",
+      "name": "",
+      "label": "物件種目１",
+      "optionCount": 1,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "id": "__BVID__299",
+      "name": "",
+      "label": "物件種目２",
+      "optionCount": 1,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "id": "__BVID__302",
+      "name": "",
+      "label": "賃貸土地賃貸一戸建賃貸マンション賃貸外全(住宅以外建物全部)賃貸外一(住宅以外建物一部)",
+      "optionCount": 6,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "賃貸土地"
+        },
+        {
+          "value": "02",
+          "text": "賃貸一戸建"
+        },
+        {
+          "value": "03",
+          "text": "賃貸マンション"
+        },
+        {
+          "value": "04",
+          "text": "賃貸外全(住宅以外建物全部)"
+        },
+        {
+          "value": "05",
+          "text": "賃貸外一(住宅以外建物一部)"
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "id": "__BVID__305",
+      "name": "",
+      "label": "物件種目１",
+      "optionCount": 1,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "id": "__BVID__308",
+      "name": "",
+      "label": "物件種目２",
+      "optionCount": 1,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "id": "__BVID__334",
+      "name": "",
+      "label": "前方部分",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "1",
+          "text": "前方"
+        },
+        {
+          "value": "2",
+          "text": "部分"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "id": "__BVID__339",
+      "name": "",
+      "label": "前方部分",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "1",
+          "text": "前方"
+        },
+        {
+          "value": "2",
+          "text": "部分"
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "id": "__BVID__351",
+      "name": "",
+      "label": "前方部分",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "1",
+          "text": "前方"
+        },
+        {
+          "value": "2",
+          "text": "部分"
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "id": "__BVID__356",
+      "name": "",
+      "label": "前方部分",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "1",
+          "text": "前方"
+        },
+        {
+          "value": "2",
+          "text": "部分"
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "id": "__BVID__368",
+      "name": "",
+      "label": "前方部分",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "1",
+          "text": "前方"
+        },
+        {
+          "value": "2",
+          "text": "部分"
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "id": "__BVID__373",
+      "name": "",
+      "label": "前方部分",
+      "optionCount": 2,
+      "options": [
+        {
+          "value": "1",
+          "text": "前方"
+        },
+        {
+          "value": "2",
+          "text": "部分"
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "id": "__BVID__387",
+      "name": "",
+      "label": "分ｍ",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "分"
+        },
+        {
+          "value": "2",
+          "text": "ｍ"
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "id": "__BVID__407",
+      "name": "",
+      "label": "分ｍ",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "分"
+        },
+        {
+          "value": "2",
+          "text": "ｍ"
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "id": "__BVID__427",
+      "name": "",
+      "label": "分ｍ",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "分"
+        },
+        {
+          "value": "2",
+          "text": "ｍ"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "id": "__BVID__444",
+      "name": "",
+      "label": "分ｍ",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "分"
+        },
+        {
+          "value": "2",
+          "text": "ｍ"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "id": "__BVID__452",
+      "name": "",
+      "label": "分ｍ",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "分"
+        },
+        {
+          "value": "2",
+          "text": "ｍ"
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "id": "__BVID__525",
+      "name": "",
+      "label": "北北東東南東南南西西北西",
+      "optionCount": 9,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "北"
+        },
+        {
+          "value": "2",
+          "text": "北東"
+        },
+        {
+          "value": "3",
+          "text": "東"
+        },
+        {
+          "value": "4",
+          "text": "南東"
+        },
+        {
+          "value": "5",
+          "text": "南"
+        },
+        {
+          "value": "6",
+          "text": "南西"
+        },
+        {
+          "value": "7",
+          "text": "西"
+        },
+        {
+          "value": "8",
+          "text": "北西"
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "id": "__BVID__528",
+      "name": "",
+      "label": "北北東東南東南南西西北西",
+      "optionCount": 9,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "北"
+        },
+        {
+          "value": "2",
+          "text": "北東"
+        },
+        {
+          "value": "3",
+          "text": "東"
+        },
+        {
+          "value": "4",
+          "text": "南東"
+        },
+        {
+          "value": "5",
+          "text": "南"
+        },
+        {
+          "value": "6",
+          "text": "南西"
+        },
+        {
+          "value": "7",
+          "text": "西"
+        },
+        {
+          "value": "8",
+          "text": "北西"
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "id": "__BVID__531",
+      "name": "",
+      "label": "一方角地三方四方二方",
+      "optionCount": 6,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "一方"
+        },
+        {
+          "value": "2",
+          "text": "角地"
+        },
+        {
+          "value": "3",
+          "text": "三方"
+        },
+        {
+          "value": "4",
+          "text": "四方"
+        },
+        {
+          "value": "5",
+          "text": "二方"
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "id": "__BVID__540",
+      "name": "",
+      "label": "一低二中二住近商商業準工工業工専二低一中一住準住田園定めなし",
+      "optionCount": 15,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "一低"
+        },
+        {
+          "value": "02",
+          "text": "二中"
+        },
+        {
+          "value": "03",
+          "text": "二住"
+        },
+        {
+          "value": "04",
+          "text": "近商"
+        },
+        {
+          "value": "05",
+          "text": "商業"
+        },
+        {
+          "value": "06",
+          "text": "準工"
+        },
+        {
+          "value": "07",
+          "text": "工業"
+        },
+        {
+          "value": "08",
+          "text": "工専"
+        },
+        {
+          "value": "10",
+          "text": "二低"
+        },
+        {
+          "value": "11",
+          "text": "一中"
+        },
+        {
+          "value": "12",
+          "text": "一住"
+        },
+        {
+          "value": "13",
+          "text": "準住"
+        },
+        {
+          "value": "14",
+          "text": "田園"
+        },
+        {
+          "value": "99",
+          "text": "定めなし"
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "id": "__BVID__543",
+      "name": "",
+      "label": "配送センタ用地資材置場用地家庭菜園用地畑・農地用地リゾート向",
+      "optionCount": 6,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "06",
+          "text": "配送センタ用地"
+        },
+        {
+          "value": "13",
+          "text": "資材置場用地"
+        },
+        {
+          "value": "14",
+          "text": "家庭菜園用地"
+        },
+        {
+          "value": "18",
+          "text": "畑・農地用地"
+        },
+        {
+          "value": "55",
+          "text": "リゾート向"
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "id": "__BVID__546",
+      "name": "",
+      "label": "有／空有無／空無近隣確保",
+      "optionCount": 4,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "1",
+          "text": "有／空有"
+        },
+        {
+          "value": "2",
+          "text": "無／空無"
+        },
+        {
+          "value": "3",
+          "text": "近隣確保"
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "id": "__BVID__552",
+      "name": "",
+      "label": "",
+      "optionCount": 103,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "2027",
+          "text": "2027年(令和9年)"
+        },
+        {
+          "value": "2026",
+          "text": "2026年(令和8年)"
+        },
+        {
+          "value": "2025",
+          "text": "2025年(令和7年)"
+        },
+        {
+          "value": "2024",
+          "text": "2024年(令和6年)"
+        },
+        {
+          "value": "2023",
+          "text": "2023年(令和5年)"
+        },
+        {
+          "value": "2022",
+          "text": "2022年(令和4年)"
+        },
+        {
+          "value": "2021",
+          "text": "2021年(令和3年)"
+        },
+        {
+          "value": "2020",
+          "text": "2020年(令和2年)"
+        },
+        {
+          "value": "2019",
+          "text": "2019年(平成31年/令和1年)"
+        },
+        {
+          "value": "2018",
+          "text": "2018年(平成30年)"
+        },
+        {
+          "value": "2017",
+          "text": "2017年(平成29年)"
+        },
+        {
+          "value": "2016",
+          "text": "2016年(平成28年)"
+        },
+        {
+          "value": "2015",
+          "text": "2015年(平成27年)"
+        },
+        {
+          "value": "2014",
+          "text": "2014年(平成26年)"
+        },
+        {
+          "value": "2013",
+          "text": "2013年(平成25年)"
+        },
+        {
+          "value": "2012",
+          "text": "2012年(平成24年)"
+        },
+        {
+          "value": "2011",
+          "text": "2011年(平成23年)"
+        },
+        {
+          "value": "2010",
+          "text": "2010年(平成22年)"
+        },
+        {
+          "value": "2009",
+          "text": "2009年(平成21年)"
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "id": "__BVID__554",
+      "name": "",
+      "label": "123456789101112",
+      "optionCount": 13,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "1"
+        },
+        {
+          "value": "02",
+          "text": "2"
+        },
+        {
+          "value": "03",
+          "text": "3"
+        },
+        {
+          "value": "04",
+          "text": "4"
+        },
+        {
+          "value": "05",
+          "text": "5"
+        },
+        {
+          "value": "06",
+          "text": "6"
+        },
+        {
+          "value": "07",
+          "text": "7"
+        },
+        {
+          "value": "08",
+          "text": "8"
+        },
+        {
+          "value": "09",
+          "text": "9"
+        },
+        {
+          "value": "10",
+          "text": "10"
+        },
+        {
+          "value": "11",
+          "text": "11"
+        },
+        {
+          "value": "12",
+          "text": "12"
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "id": "__BVID__556",
+      "name": "",
+      "label": "",
+      "optionCount": 103,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "2027",
+          "text": "2027年(令和9年)"
+        },
+        {
+          "value": "2026",
+          "text": "2026年(令和8年)"
+        },
+        {
+          "value": "2025",
+          "text": "2025年(令和7年)"
+        },
+        {
+          "value": "2024",
+          "text": "2024年(令和6年)"
+        },
+        {
+          "value": "2023",
+          "text": "2023年(令和5年)"
+        },
+        {
+          "value": "2022",
+          "text": "2022年(令和4年)"
+        },
+        {
+          "value": "2021",
+          "text": "2021年(令和3年)"
+        },
+        {
+          "value": "2020",
+          "text": "2020年(令和2年)"
+        },
+        {
+          "value": "2019",
+          "text": "2019年(平成31年/令和1年)"
+        },
+        {
+          "value": "2018",
+          "text": "2018年(平成30年)"
+        },
+        {
+          "value": "2017",
+          "text": "2017年(平成29年)"
+        },
+        {
+          "value": "2016",
+          "text": "2016年(平成28年)"
+        },
+        {
+          "value": "2015",
+          "text": "2015年(平成27年)"
+        },
+        {
+          "value": "2014",
+          "text": "2014年(平成26年)"
+        },
+        {
+          "value": "2013",
+          "text": "2013年(平成25年)"
+        },
+        {
+          "value": "2012",
+          "text": "2012年(平成24年)"
+        },
+        {
+          "value": "2011",
+          "text": "2011年(平成23年)"
+        },
+        {
+          "value": "2010",
+          "text": "2010年(平成22年)"
+        },
+        {
+          "value": "2009",
+          "text": "2009年(平成21年)"
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "id": "__BVID__558",
+      "name": "",
+      "label": "123456789101112",
+      "optionCount": 13,
+      "options": [
+        {
+          "value": "",
+          "text": ""
+        },
+        {
+          "value": "01",
+          "text": "1"
+        },
+        {
+          "value": "02",
+          "text": "2"
+        },
+        {
+          "value": "03",
+          "text": "3"
+        },
+        {
+          "value": "04",
+          "text": "4"
+        },
+        {
+          "value": "05",
+          "text": "5"
+        },
+        {
+          "value": "06",
+          "text": "6"
+        },
+        {
+          "value": "07",
+          "text": "7"
+        },
+        {
+          "value": "08",
+          "text": "8"
+        },
+        {
+          "value": "09",
+          "text": "9"
+        },
+        {
+          "value": "10",
+          "text": "10"
+        },
+        {
+          "value": "11",
+          "text": "11"
+        },
+        {
+          "value": "12",
+          "text": "12"
+        }
+      ]
+    },
+    {
+      "index": 31,
+      "id": "__BVID__582",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 32,
+      "id": "__BVID__587",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 33,
+      "id": "__BVID__602",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 34,
+      "id": "__BVID__607",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 35,
+      "id": "__BVID__621",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 36,
+      "id": "__BVID__626",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 37,
+      "id": "__BVID__640",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    },
+    {
+      "index": 38,
+      "id": "__BVID__645",
+      "name": "",
+      "label": "令和平成昭和 年",
+      "optionCount": 3,
+      "options": [
+        {
+          "value": "R",
+          "text": "令和"
+        },
+        {
+          "value": "H",
+          "text": "平成"
+        },
+        {
+          "value": "S",
+          "text": "昭和"
+        }
+      ]
+    }
+  ],
+  "textInputs": [
+    {
+      "index": 0,
+      "id": "__BVID__271",
+      "name": "",
+      "placeholder": "",
+      "label": "検索条件の保存 （全角のみ／40文字以内）",
+      "width": 0
+    },
+    {
+      "index": 1,
+      "id": "__BVID__325",
+      "name": "",
+      "placeholder": "",
+      "label": "都道府県名 ※この項目は完全一致にて検索を行います。",
+      "width": 223
+    },
+    {
+      "index": 2,
+      "id": "__BVID__329",
+      "name": "",
+      "placeholder": "",
+      "label": "所在地名１\n                             \n              ",
+      "width": 343
+    },
+    {
+      "index": 3,
+      "id": "__BVID__332",
+      "name": "",
+      "placeholder": "",
+      "label": "所在地名２",
+      "width": 343
+    },
+    {
+      "index": 4,
+      "id": "__BVID__337",
+      "name": "",
+      "placeholder": "",
+      "label": "建物名",
+      "width": 582
+    },
+    {
+      "index": 5,
+      "id": "__BVID__342",
+      "name": "",
+      "placeholder": "",
+      "label": "都道府県名 ※この項目は完全一致にて検索を行います。",
+      "width": 223
+    },
+    {
+      "index": 6,
+      "id": "__BVID__346",
+      "name": "",
+      "placeholder": "",
+      "label": "所在地名１ ※この項目は完全一致にて検索を行います。",
+      "width": 343
+    },
+    {
+      "index": 7,
+      "id": "__BVID__349",
+      "name": "",
+      "placeholder": "",
+      "label": "所在地名２",
+      "width": 343
+    },
+    {
+      "index": 8,
+      "id": "__BVID__354",
+      "name": "",
+      "placeholder": "",
+      "label": "建物名",
+      "width": 582
+    },
+    {
+      "index": 9,
+      "id": "__BVID__359",
+      "name": "",
+      "placeholder": "",
+      "label": "都道府県名 ※この項目は完全一致にて検索を行います。",
+      "width": 223
+    },
+    {
+      "index": 10,
+      "id": "__BVID__363",
+      "name": "",
+      "placeholder": "",
+      "label": "所在地名１ ※この項目は完全一致にて検索を行います。",
+      "width": 343
+    },
+    {
+      "index": 11,
+      "id": "__BVID__366",
+      "name": "",
+      "placeholder": "",
+      "label": "所在地名２",
+      "width": 343
+    },
+    {
+      "index": 12,
+      "id": "__BVID__371",
+      "name": "",
+      "placeholder": "",
+      "label": "建物名",
+      "width": 582
+    },
+    {
+      "index": 13,
+      "id": "__BVID__376",
+      "name": "",
+      "placeholder": "",
+      "label": "沿線名 ※この項目は完全一致にて検索を行います。",
+      "width": 283
+    },
+    {
+      "index": 14,
+      "id": "__BVID__380",
+      "name": "",
+      "placeholder": "",
+      "label": "駅名 ※この項目は完全一致にて検索を行いその際、連絡駅も検索対象に含まれます。",
+      "width": 283
+    },
+    {
+      "index": 15,
+      "id": "__BVID__382",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 283
+    },
+    {
+      "index": 16,
+      "id": "__BVID__385",
+      "name": "",
+      "placeholder": "",
+      "label": "駅から徒歩",
+      "width": 104
+    },
+    {
+      "index": 17,
+      "id": "__BVID__390",
+      "name": "",
+      "placeholder": "",
+      "label": "駅から車",
+      "width": 104
+    },
+    {
+      "index": 18,
+      "id": "__BVID__393",
+      "name": "",
+      "placeholder": "",
+      "label": "駅からバス",
+      "width": 44
+    },
+    {
+      "index": 19,
+      "id": "__BVID__396",
+      "name": "",
+      "placeholder": "",
+      "label": "沿線名 ※この項目は完全一致にて検索を行います。",
+      "width": 283
+    },
+    {
+      "index": 20,
+      "id": "__BVID__400",
+      "name": "",
+      "placeholder": "",
+      "label": "駅名 ※この項目は完全一致にて検索を行いその際、連絡駅も検索対象に含まれます。",
+      "width": 283
+    },
+    {
+      "index": 21,
+      "id": "__BVID__402",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 283
+    },
+    {
+      "index": 22,
+      "id": "__BVID__405",
+      "name": "",
+      "placeholder": "",
+      "label": "駅から徒歩",
+      "width": 104
+    },
+    {
+      "index": 23,
+      "id": "__BVID__410",
+      "name": "",
+      "placeholder": "",
+      "label": "駅から車",
+      "width": 104
+    },
+    {
+      "index": 24,
+      "id": "__BVID__413",
+      "name": "",
+      "placeholder": "",
+      "label": "駅からバス",
+      "width": 44
+    },
+    {
+      "index": 25,
+      "id": "__BVID__416",
+      "name": "",
+      "placeholder": "",
+      "label": "沿線名 ※この項目は完全一致にて検索を行います。",
+      "width": 283
+    },
+    {
+      "index": 26,
+      "id": "__BVID__420",
+      "name": "",
+      "placeholder": "",
+      "label": "駅名 ※この項目は完全一致にて検索を行いその際、連絡駅も検索対象に含まれます。",
+      "width": 283
+    },
+    {
+      "index": 27,
+      "id": "__BVID__422",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 283
+    },
+    {
+      "index": 28,
+      "id": "__BVID__425",
+      "name": "",
+      "placeholder": "",
+      "label": "駅から徒歩",
+      "width": 104
+    },
+    {
+      "index": 29,
+      "id": "__BVID__430",
+      "name": "",
+      "placeholder": "",
+      "label": "駅から車",
+      "width": 104
+    },
+    {
+      "index": 30,
+      "id": "__BVID__433",
+      "name": "",
+      "placeholder": "",
+      "label": "駅からバス",
+      "width": 44
+    },
+    {
+      "index": 31,
+      "id": "__BVID__436",
+      "name": "",
+      "placeholder": "",
+      "label": "バス路線名 ※この項目は完全一致にて検索を行います。",
+      "width": 253
+    },
+    {
+      "index": 32,
+      "id": "__BVID__439",
+      "name": "",
+      "placeholder": "",
+      "label": "バス停名称",
+      "width": 343
+    },
+    {
+      "index": 33,
+      "id": "__BVID__442",
+      "name": "",
+      "placeholder": "",
+      "label": "バス停から徒歩",
+      "width": 104
+    },
+    {
+      "index": 34,
+      "id": "__BVID__447",
+      "name": "",
+      "placeholder": "",
+      "label": "交通手段名 ※この項目は部分一致にて検索を行います。",
+      "width": 702
+    },
+    {
+      "index": 35,
+      "id": "__BVID__450",
+      "name": "",
+      "placeholder": "",
+      "label": "交通",
+      "width": 104
+    },
+    {
+      "index": 36,
+      "id": "__BVID__456",
+      "name": "",
+      "placeholder": "",
+      "label": "賃料 ※在庫のみ有効",
+      "width": 106
+    },
+    {
+      "index": 37,
+      "id": "__BVID__458",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 38,
+      "id": "__BVID__461",
+      "name": "",
+      "placeholder": "",
+      "label": "成約賃料 ※成約のみ有効",
+      "width": 106
+    },
+    {
+      "index": 39,
+      "id": "__BVID__463",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 40,
+      "id": "__BVID__466",
+      "name": "",
+      "placeholder": "",
+      "label": "坪単価 ※3.30578で換算。在庫のみ有効",
+      "width": 106
+    },
+    {
+      "index": 41,
+      "id": "__BVID__468",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 42,
+      "id": "__BVID__471",
+      "name": "",
+      "placeholder": "",
+      "label": "成約坪単価 ※3.30578で換算。成約のみ有効",
+      "width": 106
+    },
+    {
+      "index": 43,
+      "id": "__BVID__473",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 44,
+      "id": "__BVID__476",
+      "name": "",
+      "placeholder": "",
+      "label": "土地面積",
+      "width": 106
+    },
+    {
+      "index": 45,
+      "id": "__BVID__478",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 46,
+      "id": "__BVID__481",
+      "name": "",
+      "placeholder": "",
+      "label": "建物面積",
+      "width": 106
+    },
+    {
+      "index": 47,
+      "id": "__BVID__483",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 48,
+      "id": "__BVID__486",
+      "name": "",
+      "placeholder": "",
+      "label": "建物使用部分面積",
+      "width": 106
+    },
+    {
+      "index": 49,
+      "id": "__BVID__488",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 106
+    },
+    {
+      "index": 50,
+      "id": "__BVID__491",
+      "name": "",
+      "placeholder": "",
+      "label": "間取部屋数",
+      "width": 45
+    },
+    {
+      "index": 51,
+      "id": "__BVID__493",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 45
+    },
+    {
+      "index": 52,
+      "id": "__BVID__520",
+      "name": "",
+      "placeholder": "",
+      "label": "所在階",
+      "width": 45
+    },
+    {
+      "index": 53,
+      "id": "__BVID__522",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 45
+    },
+    {
+      "index": 54,
+      "id": "__BVID__534",
+      "name": "",
+      "placeholder": "",
+      "label": "接道接面",
+      "width": 106
+    },
+    {
+      "index": 55,
+      "id": "__BVID__537",
+      "name": "",
+      "placeholder": "",
+      "label": "接道幅員",
+      "width": 106
+    },
+    {
+      "index": 56,
+      "id": "__BVID__567",
+      "name": "",
+      "placeholder": "",
+      "label": "備考１ ※この項目は部分一致にて検索を行います。",
+      "width": 523
+    },
+    {
+      "index": 57,
+      "id": "__BVID__570",
+      "name": "",
+      "placeholder": "",
+      "label": "周辺環境 ※この項目は部分一致にて検索を行います。",
+      "width": 702
+    },
+    {
+      "index": 58,
+      "id": "__BVID__583",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 59,
+      "id": "__BVID__584",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 60,
+      "id": "__BVID__585",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 61,
+      "id": "__BVID__588",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 62,
+      "id": "__BVID__589",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 63,
+      "id": "__BVID__590",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 64,
+      "id": "__BVID__603",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 65,
+      "id": "__BVID__604",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 66,
+      "id": "__BVID__605",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 67,
+      "id": "__BVID__608",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 68,
+      "id": "__BVID__609",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 69,
+      "id": "__BVID__610",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 70,
+      "id": "__BVID__622",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 71,
+      "id": "__BVID__623",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 72,
+      "id": "__BVID__624",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 73,
+      "id": "__BVID__627",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 74,
+      "id": "__BVID__628",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 75,
+      "id": "__BVID__629",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 76,
+      "id": "__BVID__641",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 77,
+      "id": "__BVID__642",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 78,
+      "id": "__BVID__643",
+      "name": "",
+      "placeholder": "",
+      "label": "令和平成昭和 年\n        月\n        日",
+      "width": 28
+    },
+    {
+      "index": 79,
+      "id": "__BVID__646",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 80,
+      "id": "__BVID__647",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    },
+    {
+      "index": 81,
+      "id": "__BVID__648",
+      "name": "",
+      "placeholder": "",
+      "label": "～",
+      "width": 28
+    }
+  ],
+  "checkboxes": [
+    {
+      "index": 0,
+      "id": "__BVID__311",
+      "name": "",
+      "label": "新築",
+      "checked": false
+    },
+    {
+      "index": 1,
+      "id": "__BVID__314",
+      "name": "",
+      "label": "図面ありのみ",
+      "checked": false
+    },
+    {
+      "index": 2,
+      "id": "__BVID__316",
+      "name": "",
+      "label": "物件画像ありのみ",
+      "checked": false
+    },
+    {
+      "index": 3,
+      "id": "__BVID__496",
+      "name": "",
+      "label": "角部屋",
+      "checked": false
+    },
+    {
+      "index": 4,
+      "id": "__BVID__501",
+      "name": "__BVID__499",
+      "label": "ワンルーム",
+      "checked": false
+    },
+    {
+      "index": 5,
+      "id": "__BVID__503",
+      "name": "__BVID__499",
+      "label": "Ｋ",
+      "checked": false
+    },
+    {
+      "index": 6,
+      "id": "__BVID__505",
+      "name": "__BVID__499",
+      "label": "ＤＫ",
+      "checked": false
+    },
+    {
+      "index": 7,
+      "id": "__BVID__507",
+      "name": "__BVID__499",
+      "label": "ＬＫ",
+      "checked": false
+    },
+    {
+      "index": 8,
+      "id": "__BVID__509",
+      "name": "__BVID__499",
+      "label": "ＬＤＫ",
+      "checked": false
+    },
+    {
+      "index": 9,
+      "id": "__BVID__511",
+      "name": "__BVID__499",
+      "label": "ＳＫ",
+      "checked": false
+    },
+    {
+      "index": 10,
+      "id": "__BVID__513",
+      "name": "__BVID__499",
+      "label": "ＳＤＫ",
+      "checked": false
+    },
+    {
+      "index": 11,
+      "id": "__BVID__515",
+      "name": "__BVID__499",
+      "label": "ＳＬＫ",
+      "checked": false
+    },
+    {
+      "index": 12,
+      "id": "__BVID__517",
+      "name": "__BVID__499",
+      "label": "ＳＬＤＫ",
+      "checked": false
+    },
+    {
+      "index": 13,
+      "id": "__BVID__549",
+      "name": "",
+      "label": "平屋建て",
+      "checked": false
+    }
+  ],
+  "radioButtons": [
+    {
+      "index": 0,
+      "id": "__BVID__284",
+      "name": "__BVID__283",
+      "value": "1",
+      "label": "在庫",
+      "checked": true
+    },
+    {
+      "index": 1,
+      "id": "__BVID__285",
+      "name": "__BVID__283",
+      "value": "2",
+      "label": "成約",
+      "checked": false
+    },
+    {
+      "index": 2,
+      "id": "__BVID__320",
+      "name": "__BVID__319",
+      "value": "0",
+      "label": "商号あり",
+      "checked": true
+    },
+    {
+      "index": 3,
+      "id": "__BVID__321",
+      "name": "__BVID__319",
+      "value": "1",
+      "label": "商号なし",
+      "checked": false
+    },
+    {
+      "index": 4,
+      "id": "__BVID__574",
+      "name": "__BVID__573",
+      "value": "0",
+      "label": "指定なし(全期間)",
+      "checked": true
+    },
+    {
+      "index": 5,
+      "id": "__BVID__575",
+      "name": "__BVID__573",
+      "value": "1",
+      "label": "３日以内",
+      "checked": false
+    },
+    {
+      "index": 6,
+      "id": "__BVID__576",
+      "name": "__BVID__573",
+      "value": "2",
+      "label": "１週間以内",
+      "checked": false
+    },
+    {
+      "index": 7,
+      "id": "__BVID__577",
+      "name": "__BVID__573",
+      "value": "3",
+      "label": "１ヶ月以内",
+      "checked": false
+    },
+    {
+      "index": 8,
+      "id": "__BVID__578",
+      "name": "__BVID__573",
+      "value": "4",
+      "label": "日付を指定",
+      "checked": false
+    },
+    {
+      "index": 9,
+      "id": "__BVID__579",
+      "name": "__BVID__573",
+      "value": "5",
+      "label": "前日",
+      "checked": false
+    },
+    {
+      "index": 10,
+      "id": "__BVID__580",
+      "name": "__BVID__573",
+      "value": "6",
+      "label": "当日",
+      "checked": false
+    },
+    {
+      "index": 11,
+      "id": "__BVID__594",
+      "name": "__BVID__593",
+      "value": "0",
+      "label": "指定なし(全期間)",
+      "checked": true
+    },
+    {
+      "index": 12,
+      "id": "__BVID__595",
+      "name": "__BVID__593",
+      "value": "1",
+      "label": "３日以内",
+      "checked": false
+    },
+    {
+      "index": 13,
+      "id": "__BVID__596",
+      "name": "__BVID__593",
+      "value": "2",
+      "label": "１週間以内",
+      "checked": false
+    },
+    {
+      "index": 14,
+      "id": "__BVID__597",
+      "name": "__BVID__593",
+      "value": "3",
+      "label": "１ヶ月以内",
+      "checked": false
+    },
+    {
+      "index": 15,
+      "id": "__BVID__598",
+      "name": "__BVID__593",
+      "value": "4",
+      "label": "日付を指定",
+      "checked": false
+    },
+    {
+      "index": 16,
+      "id": "__BVID__599",
+      "name": "__BVID__593",
+      "value": "5",
+      "label": "前日",
+      "checked": false
+    },
+    {
+      "index": 17,
+      "id": "__BVID__600",
+      "name": "__BVID__593",
+      "value": "6",
+      "label": "当日",
+      "checked": false
+    },
+    {
+      "index": 18,
+      "id": "__BVID__614",
+      "name": "__BVID__613",
+      "value": "0",
+      "label": "指定なし(全期間)",
+      "checked": false
+    },
+    {
+      "index": 19,
+      "id": "__BVID__615",
+      "name": "__BVID__613",
+      "value": "1",
+      "label": "３日以内",
+      "checked": false
+    },
+    {
+      "index": 20,
+      "id": "__BVID__616",
+      "name": "__BVID__613",
+      "value": "2",
+      "label": "１週間以内",
+      "checked": false
+    },
+    {
+      "index": 21,
+      "id": "__BVID__617",
+      "name": "__BVID__613",
+      "value": "3",
+      "label": "１ヶ月以内",
+      "checked": false
+    },
+    {
+      "index": 22,
+      "id": "__BVID__618",
+      "name": "__BVID__613",
+      "value": "4",
+      "label": "１年以内",
+      "checked": true
+    },
+    {
+      "index": 23,
+      "id": "__BVID__619",
+      "name": "__BVID__613",
+      "value": "5",
+      "label": "日付を指定",
+      "checked": false
+    },
+    {
+      "index": 24,
+      "id": "__BVID__633",
+      "name": "__BVID__632",
+      "value": "0",
+      "label": "指定なし(全期間)",
+      "checked": true
+    },
+    {
+      "index": 25,
+      "id": "__BVID__634",
+      "name": "__BVID__632",
+      "value": "1",
+      "label": "３日以内",
+      "checked": false
+    },
+    {
+      "index": 26,
+      "id": "__BVID__635",
+      "name": "__BVID__632",
+      "value": "2",
+      "label": "１週間以内",
+      "checked": false
+    },
+    {
+      "index": 27,
+      "id": "__BVID__636",
+      "name": "__BVID__632",
+      "value": "3",
+      "label": "１ヶ月以内",
+      "checked": false
+    },
+    {
+      "index": 28,
+      "id": "__BVID__637",
+      "name": "__BVID__632",
+      "value": "4",
+      "label": "１年以内",
+      "checked": false
+    },
+    {
+      "index": 29,
+      "id": "__BVID__638",
+      "name": "__BVID__632",
+      "value": "5",
+      "label": "日付を指定",
+      "checked": false
+    }
+  ],
+  "sections": [
+    "検索条件の選択・保存 (ワンタッチ検索)",
+    "保存した検索条件の選択",
+    "検索条件の保存",
+    "マッチング検索登録",
+    "保存した検索条件の選択",
+    "基本条件",
+    "対象区分",
+    "並び順",
+    "物件種別１",
+    "物件種目１",
+    "物件種目２",
+    "物件種別２",
+    "物件種目１",
+    "物件種目２",
+    "新築区分",
+    "その他の条件",
+    "商号の有無",
+    "所在地・沿線",
+    "所在地１",
+    "都道府県名",
+    "所在地名１",
+    "所在地名２",
+    "建物名",
+    "所在地２",
+    "都道府県名",
+    "所在地名１",
+    "所在地名２",
+    "建物名",
+    "所在地３",
+    "都道府県名",
+    "所在地名１",
+    "所在地名２",
+    "建物名",
+    "沿線１",
+    "沿線名",
+    "駅名",
+    "駅から徒歩",
+    "駅から車",
+    "駅からバス",
+    "沿線２",
+    "沿線名",
+    "駅名",
+    "駅から徒歩",
+    "駅から車",
+    "駅からバス",
+    "沿線３",
+    "沿線名",
+    "駅名",
+    "駅から徒歩",
+    "駅から車",
+    "駅からバス",
+    "バス路線",
+    "バス路線名",
+    "バス停名称",
+    "バス停から徒歩",
+    "その他の交通手段",
+    "交通手段名",
+    "交通",
+    "賃料・面積等",
+    "賃料",
+    "成約賃料",
+    "坪単価",
+    "成約坪単価",
+    "土地面積",
+    "建物面積",
+    "建物使用部分面積",
+    "間取部屋数",
+    "部屋位置",
+    "間取タイプ",
+    "所在階",
+    "バルコニー方向/採光面方向",
+    "接道方向",
+    "接道状況",
+    "接道接面",
+    "接道幅員",
+    "用途地域",
+    "最適用途",
+    "駐車場の有無",
+    "建物形式",
+    "築年月",
+    "オプション／その他",
+    "オプション",
+    "設備・条件・住宅性能等",
+    "備考１",
+    "周辺環境",
+    "その他検索項目(在庫のみ)",
+    "登録年月日",
+    "変更年月日",
+    "その他検索項目(成約のみ)",
+    "成約年月日",
+    "成約登録年月日",
+    "賃貸検索条件入力 （株）ファンテイズ 会員番号：1001300109623000",
+    "賃貸検索条件入力 （株）ファンテイズ 会員番号：1001300109623000",
+    "賃貸検索条件入力",
+    "賃貸検索条件入力"
+  ]
+}

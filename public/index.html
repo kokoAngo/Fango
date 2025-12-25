@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>住まい検索 - Housing Finder</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .header p { font-size: 1.2em; opacity: 0.9; }
+        .content { padding: 40px; }
+
+        .form-section { margin-bottom: 30px; }
+        .form-section label { display: block; color: #667eea; margin-bottom: 10px; font-weight: bold; font-size: 1.1em; }
+        .form-section .required { color: #e74c3c; }
+        .form-section .optional { color: #888; font-weight: normal; font-size: 0.9em; }
+
+        .mbti-select {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .mbti-select:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2); }
+        .mbti-select:hover { border-color: #667eea; }
+
+        .user-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 1em;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            resize: vertical;
+            min-height: 150px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+        .user-input:focus { outline: none; border-color: #764ba2; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3); }
+        .user-input::placeholder { color: #aaa; }
+
+        .hint { font-size: 0.85em; color: #888; margin-top: 8px; line-height: 1.6; }
+
+        .search-button {
+            display: block;
+            width: 100%;
+            padding: 18px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.3em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            margin-top: 20px;
+        }
+        .search-button:hover { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(102, 126, 234, 0.5); }
+        .search-button:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; transform: none; }
+
+        .loading { display: none; text-align: center; padding: 40px; }
+        .loading.active { display: block; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #667eea; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .error { background: #fee; color: #c33; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
+        .error.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>住まい検索</h1>
+            <p>あなたの希望条件で物件を検索</p>
+        </div>
+        <div class="content">
+            <div class="error" id="error"></div>
+
+            <div class="form-section">
+                <label for="userRequirements">
+                    希望条件を入力 <span class="required">*必須</span>
+                </label>
+                <textarea class="user-input" id="userRequirements" placeholder="例：
+・東京都 渋谷区
+・駅から徒歩10分以内
+・賃料10万円以内
+・2LDK
+・南向き
+・ペット可"></textarea>
+                <p class="hint">
+                    <strong>入力できる条件：</strong>地域（東京、渋谷区など）、賃料（10万円以内、8～12万など）、<br>
+                    間取り（ワンルーム、1K、2LDK等）、駅・徒歩分数、向き（南向き等）、<br>
+                    その他（新築、ペット可、角部屋、オートロック等）
+                </p>
+            </div>
+
+            <div class="form-section">
+                <label for="mbtiSelect">
+                    住まいMBTIタイプ <span class="optional">（任意）</span>
+                </label>
+                <select class="mbti-select" id="mbtiSelect">
+                    <option value="">-- 選択しない --</option>
+                </select>
+            </div>
+
+            <button class="search-button" id="searchButton" disabled>物件を検索する</button>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>物件を検索中...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mbtiTypes = [];
+
+        async function loadMBTITypes() {
+            try {
+                const response = await fetch('/api/mbti-types');
+                mbtiTypes = await response.json();
+                renderMBTISelect();
+            } catch (error) {
+                console.error('Failed to load MBTI types');
+            }
+        }
+
+        function renderMBTISelect() {
+            const select = document.getElementById('mbtiSelect');
+            mbtiTypes.forEach(type => {
+                const option = document.createElement('option');
+                option.value = type.type_id;
+                option.textContent = type.display_name_ja + ' (' + type.type_id + ')';
+                select.appendChild(option);
+            });
+        }
+
+        // 检查用户输入是否有内容
+        function updateSearchButton() {
+            const userInput = document.getElementById('userRequirements').value.trim();
+            document.getElementById('searchButton').disabled = !userInput;
+        }
+
+        document.getElementById('userRequirements').addEventListener('input', updateSearchButton);
+
+        document.getElementById('searchButton').addEventListener('click', async () => {
+            const userRequirements = document.getElementById('userRequirements').value.trim();
+
+            if (!userRequirements) {
+                showError('希望条件を入力してください');
+                return;
+            }
+
+            hideError();
+            showLoading();
+
+            try {
+                const typeId = document.getElementById('mbtiSelect').value || null;
+
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        typeId: typeId,
+                        userRequirements: userRequirements
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '検索に失敗しました');
+                }
+
+                localStorage.setItem('searchResults', JSON.stringify(data));
+                localStorage.setItem('userRequirements', userRequirements);
+                window.location.href = '/results.html';
+            } catch (error) {
+                showError(error.message);
+                hideLoading();
+            }
+        });
+
+        function showLoading() {
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('searchButton').disabled = true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('active');
+            updateSearchButton();
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('active');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('active');
+        }
+
+        loadMBTITypes();
+    </script>
+</body>
+</html>

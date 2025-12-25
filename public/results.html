@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>検索結果 - Housing MBTI Finder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .back-button {
+            display: inline-block;
+            margin-bottom: 30px;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: #764ba2;
+            transform: translateX(-5px);
+        }
+
+        .results-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .results-header h2 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .results-count {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .properties-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .property-card {
+            background: white;
+            border: 2px solid #eee;
+            border-radius: 15px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .property-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            border-color: #667eea;
+        }
+
+        .property-image {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 3em;
+        }
+
+        .property-content {
+            padding: 25px;
+        }
+
+        .property-name {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .property-details {
+            margin-bottom: 10px;
+        }
+
+        .property-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .property-detail:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            color: #666;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: #333;
+            font-weight: bold;
+        }
+
+        .rent-highlight {
+            color: #667eea;
+            font-size: 1.2em;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .no-results h2 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+
+        .no-results p {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏠 検索結果</h1>
+            <p id="mbtiType"></p>
+        </div>
+
+        <div class="content">
+            <a href="/" class="back-button">← 検索に戻る</a>
+
+            <div class="results-header">
+                <h2>おすすめ物件</h2>
+                <p class="results-count" id="resultsCount"></p>
+            </div>
+
+            <div id="loadingIndicator" class="loading">
+                <div class="spinner"></div>
+                <p>結果を読み込んでいます...</p>
+            </div>
+
+            <div id="propertiesGrid" class="properties-grid"></div>
+
+            <div id="noResults" class="no-results" style="display: none;">
+                <h2>物件が見つかりませんでした</h2>
+                <p>別のMBTIタイプを試すか、検索条件を変更してください。</p>
+                <a href="/" class="back-button">検索に戻る</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function loadResults() {
+            const resultsData = localStorage.getItem('searchResults');
+            const mbtiType = localStorage.getItem('selectedMBTI');
+
+            // Hide loading indicator
+            document.getElementById('loadingIndicator').style.display = 'none';
+
+            if (!resultsData) {
+                // No results found, redirect to home
+                window.location.href = '/';
+                return;
+            }
+
+            const data = JSON.parse(resultsData);
+
+            // Set MBTI type in header
+            document.getElementById('mbtiType').textContent =
+                `あなたのタイプ: ${mbtiType || data.mbti_type || ''}`;
+
+            // Display properties
+            const properties = data.properties || [];
+            const grid = document.getElementById('propertiesGrid');
+            const count = document.getElementById('resultsCount');
+
+            if (properties.length === 0) {
+                document.getElementById('noResults').style.display = 'block';
+                count.textContent = '0件の物件が見つかりました';
+                return;
+            }
+
+            count.textContent = `${properties.length}件の物件が見つかりました`;
+
+            properties.forEach((property, index) => {
+                const card = createPropertyCard(property, index);
+                grid.appendChild(card);
+            });
+        }
+
+        function createPropertyCard(property, index) {
+            const card = document.createElement('div');
+            card.className = 'property-card';
+
+            card.innerHTML = `
+                <div class="property-image">
+                    🏢
+                </div>
+                <div class="property-content">
+                    <div class="property-name">
+                        ${property.name || `物件 #${index + 1}`}
+                    </div>
+                    <div class="property-details">
+                        ${createDetailRow('所在地', property.location || '情報なし')}
+                        ${createDetailRow('賃料', property.rent || '情報なし', 'rent-highlight')}
+                        ${createDetailRow('面積', property.area || '情報なし')}
+                        ${createDetailRow('間取り', property.layout || '情報なし')}
+                        ${createDetailRow('築年数', property.age || '情報なし')}
+                        ${createDetailRow('階数', property.floor || '情報なし')}
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function createDetailRow(label, value, valueClass = '') {
+            return `
+                <div class="property-detail">
+                    <span class="detail-label">${label}:</span>
+                    <span class="detail-value ${valueClass}">${value}</span>
+                </div>
+            `;
+        }
+
+        // Load results on page load
+        loadResults();
+    </script>
+</body>
+</html>
