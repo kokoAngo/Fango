@@ -110,14 +110,35 @@ app.post('/api/search', async (req, res) => {
       }
     }
 
-    // 複数位置で順次検索（3件以上見つかるまで）
-    const MIN_PROPERTIES = 3;
+    // 複数位置で順次検索（5件以上見つかるまで、最大10回まで）
+    const MIN_PROPERTIES = 5;
+    const MAX_SEARCH_ATTEMPTS = 10;
     let allProperties = [];
     let searchedLocations = [];
+    let allPdfPaths = [];  // 複数PDFを収集
+    let totalPdfCount = 0;
+    let searchAttempts = 0;
 
-    for (let i = 0; i < locations.length && allProperties.length < MIN_PROPERTIES; i++) {
+    // 検索専用フォルダを作成（時間+キーワード）
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    // キーワードを生成（最初の位置または条件から）
+    const keyword = locations.length > 0
+      ? `${locations[0].prefecture}_${locations[0].city}`.replace(/[\\/:*?"<>|]/g, '_')
+      : (parsedRequirements.station || parsedRequirements.line || 'search').replace(/[\\/:*?"<>|]/g, '_');
+    const searchFolderName = `${timestamp}_${keyword}`;
+    const searchDownloadDir = path.join(DOWNLOADS_DIR, searchFolderName);
+
+    // フォルダ作成
+    if (!fs.existsSync(DOWNLOADS_DIR)) {
+      fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+    }
+    fs.mkdirSync(searchDownloadDir, { recursive: true });
+    console.log(`検索専用フォルダを作成: ${searchFolderName}`);
+
+    for (let i = 0; i < locations.length && allProperties.length < MIN_PROPERTIES && searchAttempts < MAX_SEARCH_ATTEMPTS; i++) {
+      searchAttempts++;
       const location = locations[i];
-      console.log(`\n【検索 ${i + 1}/${locations.length}】${location.prefecture} ${location.city}`);
+      console.log(`\n【検索 ${searchAttempts}/${MAX_SEARCH_ATTEMPTS}】${location.prefecture} ${location.city}`);
 
       // この位置用の条件を作成
       const locationRequirements = {
@@ -131,7 +152,8 @@ app.post('/api/search', async (req, res) => {
       const searchConditions = {
         ...mbtiConditions,
         userRequirements: locationRequirements,
-        reinsFields: locationReinsFields
+        reinsFields: locationReinsFields,
+        downloadDir: searchDownloadDir  // 検索専用フォルダを指定
       };
 
       try {
@@ -143,22 +165,17 @@ app.post('/api/search', async (req, res) => {
 
         // 結果タイプを確認
         if (result && result.type === 'pdf') {
-          // PDFダウンロード成功
-          const pdfFilename = path.basename(result.pdfPath);
-          console.log(`  → PDF生成成功: ${pdfFilename}`);
+          // PDFダウンロード成功 - 収集して続行
+          console.log(`  → PDF生成成功: ${path.basename(result.pdfPath)}`);
+          allPdfPaths.push(result.pdfPath);
+          totalPdfCount += result.count || 1;
           searchedLocations.push(location);
 
-          // PDF結果を直接返す
-          return res.json({
-            success: true,
-            type: 'pdf',
-            mbti_type: mbtiName,
-            user_requirements: userRequirements,
-            parsed_requirements: parsedRequirements,
-            searched_locations: searchedLocations,
-            pdfUrl: `/downloads/${pdfFilename}`,
-            count: result.count
-          });
+          // 5件以上収集したら終了
+          if (totalPdfCount >= MIN_PROPERTIES) {
+            console.log(`\n${totalPdfCount}件以上のPDFを収集したため検索終了`);
+            break;
+          }
         } else if (result && result.type === 'properties' && result.properties) {
           // プロパティリスト（フォールバック）
           const properties = result.properties;
@@ -191,11 +208,41 @@ app.post('/api/search', async (req, res) => {
         console.log(`  → 検索エラー: ${err.message}`);
       }
 
-      // 3件以上見つかったら終了
-      if (allProperties.length >= MIN_PROPERTIES) {
+      // 5件以上見つかったら終了
+      if (allProperties.length >= MIN_PROPERTIES || totalPdfCount >= MIN_PROPERTIES) {
         console.log(`\n${MIN_PROPERTIES}件以上見つかったため検索終了`);
         break;
       }
+    }
+
+    // 収集したPDFを合併して返す
+    if (allPdfPaths.length > 0) {
+      console.log(`\n=== PDF合併処理 ===`);
+      console.log(`収集したPDF: ${allPdfPaths.length}件, 物件数: ${totalPdfCount}件`);
+
+      let finalPdfPath;
+      if (allPdfPaths.length === 1) {
+        finalPdfPath = allPdfPaths[0];
+      } else {
+        // 複数PDFを合併（検索専用フォルダに保存）
+        const mergeTimestamp = Date.now();
+        finalPdfPath = path.join(searchDownloadDir, `merged_${mergeTimestamp}.pdf`);
+        await reinsService.mergePDFs(allPdfPaths, finalPdfPath);
+      }
+
+      const pdfFilename = path.basename(finalPdfPath);
+      console.log(`✓ 最終PDF: ${pdfFilename}`);
+
+      return res.json({
+        success: true,
+        type: 'pdf',
+        mbti_type: mbtiName,
+        user_requirements: userRequirements,
+        parsed_requirements: parsedRequirements,
+        searched_locations: searchedLocations,
+        pdfUrl: `/downloads/${searchFolderName}/${pdfFilename}`,
+        count: totalPdfCount
+      });
     }
 
     // 位置がない場合は従来の検索
@@ -204,7 +251,8 @@ app.post('/api/search', async (req, res) => {
       const searchConditions = {
         ...mbtiConditions,
         userRequirements: parsedRequirements,
-        reinsFields: reinsFields
+        reinsFields: reinsFields,
+        downloadDir: searchDownloadDir  // 検索専用フォルダを指定
       };
       const result = await reinsService.searchProperties(
         username,

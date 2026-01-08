@@ -138,15 +138,18 @@ ${JSON.stringify(context, null, 2)}
 
   /**
    * 确保下载目录存在
+   * @param {boolean} clearOld - 是否清空旧文件（默认false）
    */
-  ensureDownloadDir() {
+  ensureDownloadDir(clearOld = false) {
     if (!fs.existsSync(DOWNLOADS_DIR)) {
       fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
     }
-    // 清空旧文件
-    const files = fs.readdirSync(DOWNLOADS_DIR);
-    for (const file of files) {
-      fs.unlinkSync(path.join(DOWNLOADS_DIR, file));
+    // 只有明确指定时才清空旧文件
+    if (clearOld) {
+      const files = fs.readdirSync(DOWNLOADS_DIR);
+      for (const file of files) {
+        fs.unlinkSync(path.join(DOWNLOADS_DIR, file));
+      }
     }
     return DOWNLOADS_DIR;
   }
@@ -176,18 +179,21 @@ ${JSON.stringify(context, null, 2)}
     return this.browser;
   }
 
-  async login(username, password) {
+  async login(username, password, customDownloadDir = null) {
     try {
       const browser = await this.initBrowser();
       this.page = await browser.newPage();
       await this.page.setViewport({ width: 1920, height: 1080 });
 
-      // 配置下载目录
-      const downloadPath = this.ensureDownloadDir();
+      // 配置下载目录（使用自定义目录或默认目录）
+      this.currentDownloadDir = customDownloadDir || this.ensureDownloadDir();
+      if (customDownloadDir && !fs.existsSync(customDownloadDir)) {
+        fs.mkdirSync(customDownloadDir, { recursive: true });
+      }
       const client = await this.page.target().createCDPSession();
       await client.send('Page.setDownloadBehavior', {
         behavior: 'allow',
-        downloadPath: downloadPath
+        downloadPath: this.currentDownloadDir
       });
 
       console.log('Navigating to REINS login page...');
@@ -1853,15 +1859,56 @@ ${JSON.stringify(context, null, 2)}
    * 等待文件下载完成
    */
   async waitForDownload(timeout = 30000) {
+    const downloadDir = this.currentDownloadDir || DOWNLOADS_DIR;
+    const existingFiles = new Set(fs.existsSync(downloadDir) ? fs.readdirSync(downloadDir) : []);
+    return this.waitForDownloadWithExisting(timeout, existingFiles);
+  }
+
+  /**
+   * 等待文件下载完成（使用预先记录的文件列表）
+   */
+  async waitForDownloadWithExisting(timeout = 30000, existingFiles = new Set()) {
+    const downloadDir = this.currentDownloadDir || DOWNLOADS_DIR;
     const startTime = Date.now();
+
+    console.log(`  等待目录: ${downloadDir}`);
+    console.log(`  排除文件数: ${existingFiles.size}`);
+
     while (Date.now() - startTime < timeout) {
-      const files = fs.readdirSync(DOWNLOADS_DIR);
-      const pdfFiles = files.filter(f => f.endsWith('.pdf') && !f.endsWith('.crdownload'));
-      if (pdfFiles.length > 0) {
-        return pdfFiles.map(f => path.join(DOWNLOADS_DIR, f));
+      if (!fs.existsSync(downloadDir)) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const files = fs.readdirSync(downloadDir);
+
+      // 检查是否有正在下载的文件
+      const downloadingFiles = files.filter(f =>
+        f.endsWith('.crdownload') || f.endsWith('.tmp') || f.endsWith('.download')
+      );
+      if (downloadingFiles.length > 0) {
+        console.log(`  下载中: ${downloadingFiles.join(', ')}`);
+      }
+
+      // 只返回新下载的PDF文件（排除已有文件和临时下载文件）
+      const newPdfFiles = files.filter(f =>
+        f.endsWith('.pdf') &&
+        !f.endsWith('.crdownload') &&
+        !existingFiles.has(f)
+      );
+
+      if (newPdfFiles.length > 0) {
+        console.log(`  检测到新文件: ${newPdfFiles.join(', ')}`);
+        return newPdfFiles.map(f => path.join(downloadDir, f));
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
+
+    // 超时后最后检查一次
+    const finalFiles = fs.existsSync(downloadDir) ? fs.readdirSync(downloadDir) : [];
+    console.log(`  超时，目录中的文件: ${finalFiles.join(', ') || '(无)'}`);
+
     return [];
   }
 
@@ -1964,9 +2011,9 @@ ${JSON.stringify(context, null, 2)}
 
       let selectedCount = 0;
 
-      // 方法1: 個別のチェックボックスを選択（最大3件）
+      // 方法1: 個別のチェックボックスを選択（最大5件）
       if (checkboxInfo.total > 0) {
-        const maxSelect = Math.min(checkboxInfo.total, 3);
+        const maxSelect = Math.min(checkboxInfo.total, 5);
 
         for (let i = 0; i < maxSelect; i++) {
           const selected = await this.page.evaluate((index) => {
@@ -2023,6 +2070,14 @@ ${JSON.stringify(context, null, 2)}
       // 図面一括取得ボタンをクリック
       if (selectedCount > 0) {
         console.log('\n📋 「図面一括取得」ボタンをクリック...');
+
+        // ダウンロード前に既存ファイルを記録
+        const downloadDir = this.currentDownloadDir || DOWNLOADS_DIR;
+        const existingFilesBeforeDownload = new Set(
+          fs.existsSync(downloadDir) ? fs.readdirSync(downloadDir) : []
+        );
+        console.log(`ダウンロード先: ${downloadDir}`);
+        console.log(`既存ファイル数: ${existingFilesBeforeDownload.size}`);
 
         const bulkDownloadClicked = await this.page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button'));
@@ -2083,120 +2138,179 @@ ${JSON.stringify(context, null, 2)}
           await new Promise(resolve => setTimeout(resolve, 3000));
           await this.page.screenshot({ path: 'debug-after-confirm.png', fullPage: true });
 
-          // ダウンロード完了を待機
+          // ダウンロード完了を待機（既存ファイルリストを使用）
           console.log('\n⏳ PDFダウンロード完了を待機中...');
-          const downloadedFiles = await this.waitForDownload(20000);
+          const downloadedFiles = await this.waitForDownloadWithExisting(30000, existingFilesBeforeDownload);
 
           if (downloadedFiles.length > 0) {
-            const timestamp = Date.now();
             console.log(`✓ ${downloadedFiles.length}件のPDFをダウンロード`);
-
-            // 複数PDFの場合は合併
-            if (downloadedFiles.length > 1) {
-              const mergedPath = path.join(DOWNLOADS_DIR, `merged_${timestamp}.pdf`);
-              await this.mergePDFs(downloadedFiles, mergedPath);
-              return {
-                type: 'pdf',
-                pdfPath: mergedPath,
-                count: selectedCount
-              };
-            } else {
-              return {
-                type: 'pdf',
-                pdfPath: downloadedFiles[0],
-                count: selectedCount
-              };
-            }
+            downloadedFiles.forEach(f => console.log(`  - ${path.basename(f)}`));
+            // 最初のPDFを返す（合併はserver.jsで行う）
+            return {
+              type: 'pdf',
+              pdfPath: downloadedFiles[0],
+              count: selectedCount
+            };
           }
+          console.log('ダウンロードファイルが検出されませんでした');
 
           // ダウンロードが発生しなかった場合、新しいタブをチェック
           const pages = await this.browser.pages();
           console.log('開いているページ数:', pages.length);
 
           if (pages.length > 1) {
-            // 新しいタブ（印刷プレビュー）が開いた場合
+            // 新しいタブ（印刷プレビュー/PDF）が開いた場合
             const printPage = pages[pages.length - 1];
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // ページタイトルを確認
+            // ページURLを確認
+            const pageUrl = printPage.url();
             const pageTitle = await printPage.title().catch(() => '');
+            console.log('プレビューページURL:', pageUrl);
             console.log('プレビューページタイトル:', pageTitle);
 
             // プレビューページのスクリーンショット
             await printPage.screenshot({ path: 'debug-print-dialog.png', fullPage: true });
 
-            // Puppeteerで直接PDFを生成
-            console.log('\n📄 PDFを直接生成中...');
-            const timestamp = Date.now();
-            const pdfPath = path.join(DOWNLOADS_DIR, `properties_${timestamp}.pdf`);
+            const downloadDir = this.currentDownloadDir || DOWNLOADS_DIR;
+            const pdfTimestamp = Date.now();
+            const pdfPath = path.join(downloadDir, `properties_${pdfTimestamp}.pdf`);
 
+            // 方法1: URLが直接PDFの場合、fetchでダウンロード
+            if (pageUrl.includes('.pdf') || pageUrl.includes('pdf') || pageUrl.includes('blob:')) {
+              console.log('\n📥 PDF URLを検出、直接ダウンロード試行...');
+              try {
+                // ブラウザコンテキストでPDFを取得
+                const pdfData = await printPage.evaluate(async (url) => {
+                  try {
+                    const response = await fetch(url, { credentials: 'include' });
+                    if (response.ok) {
+                      const blob = await response.blob();
+                      const reader = new FileReader();
+                      return new Promise((resolve) => {
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                      });
+                    }
+                  } catch (e) {
+                    return null;
+                  }
+                  return null;
+                }, pageUrl);
+
+                if (pdfData && pdfData.startsWith('data:application/pdf')) {
+                  const base64Data = pdfData.replace(/^data:application\/pdf;base64,/, '');
+                  fs.writeFileSync(pdfPath, Buffer.from(base64Data, 'base64'));
+                  const stats = fs.statSync(pdfPath);
+                  console.log(`✓ PDF直接ダウンロード完了: ${path.basename(pdfPath)} (${Math.round(stats.size / 1024)}KB)`);
+                  await printPage.close().catch(() => {});
+                  return { type: 'pdf', pdfPath: pdfPath, count: selectedCount };
+                }
+              } catch (fetchError) {
+                console.log('PDF直接ダウンロード失敗:', fetchError.message);
+              }
+            }
+
+            // 方法2: ページ内にiframe/object/embedでPDFが埋め込まれている場合
+            console.log('\n🔍 埋め込みPDFを検索中...');
+            const embeddedPdfUrl = await printPage.evaluate(() => {
+              // iframe内のPDF
+              const iframes = document.querySelectorAll('iframe');
+              for (const iframe of iframes) {
+                const src = iframe.src || iframe.getAttribute('data-src');
+                if (src && (src.includes('.pdf') || src.includes('pdf'))) {
+                  return src;
+                }
+              }
+              // object/embed内のPDF
+              const objects = document.querySelectorAll('object, embed');
+              for (const obj of objects) {
+                const data = obj.data || obj.src || obj.getAttribute('data');
+                if (data && (data.includes('.pdf') || data.includes('pdf'))) {
+                  return data;
+                }
+              }
+              // リンク内のPDF
+              const links = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
+              if (links.length > 0) {
+                return links[0].href;
+              }
+              return null;
+            });
+
+            if (embeddedPdfUrl) {
+              console.log('埋め込みPDF URL発見:', embeddedPdfUrl);
+              try {
+                // CDPでダウンロード
+                const client = await printPage.target().createCDPSession();
+                await client.send('Page.setDownloadBehavior', {
+                  behavior: 'allow',
+                  downloadPath: downloadDir
+                });
+
+                // 埋め込みPDFページに移動
+                await printPage.goto(embeddedPdfUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                // ダウンロード待機
+                const embeddedDownloads = await this.waitForDownloadWithExisting(15000, existingFilesBeforeDownload);
+                if (embeddedDownloads.length > 0) {
+                  console.log(`✓ 埋め込みPDFダウンロード完了: ${embeddedDownloads.length}件`);
+                  await printPage.close().catch(() => {});
+                  return { type: 'pdf', pdfPath: embeddedDownloads[0], count: selectedCount };
+                }
+              } catch (embeddedError) {
+                console.log('埋め込みPDFダウンロード失敗:', embeddedError.message);
+              }
+            }
+
+            // 方法3: 印刷ボタンをクリック（PDFダウンロードをトリガー）
+            console.log('\n🖨️ 印刷/ダウンロードボタンを検索...');
+            const downloadTriggered = await printPage.evaluate(() => {
+              const buttons = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
+              const keywords = ['ダウンロード', 'Download', 'PDF', '保存', '印刷', 'Print'];
+              for (const keyword of keywords) {
+                const btn = buttons.find(b => {
+                  const text = b.textContent?.trim() || b.value || '';
+                  return text.includes(keyword);
+                });
+                if (btn) {
+                  btn.click();
+                  return { clicked: true, text: btn.textContent?.trim() || btn.value };
+                }
+              }
+              return { clicked: false };
+            }).catch(() => ({ clicked: false }));
+
+            if (downloadTriggered.clicked) {
+              console.log(`✓ 「${downloadTriggered.text}」をクリック`);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              const triggeredDownloads = await this.waitForDownloadWithExisting(15000, existingFilesBeforeDownload);
+              if (triggeredDownloads.length > 0) {
+                console.log(`✓ ${triggeredDownloads.length}件のPDFをダウンロード`);
+                await printPage.close().catch(() => {});
+                return { type: 'pdf', pdfPath: triggeredDownloads[0], count: selectedCount };
+              }
+            }
+
+            // 方法4: フォールバック - Puppeteerで直接PDFを生成
+            console.log('\n📄 フォールバック: Puppeteerで直接PDF生成...');
             try {
               await printPage.pdf({
                 path: pdfPath,
                 format: 'A4',
                 printBackground: true,
-                margin: {
-                  top: '10mm',
-                  right: '10mm',
-                  bottom: '10mm',
-                  left: '10mm'
-                }
+                margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
               });
 
-              // ファイルが存在するか確認
               if (fs.existsSync(pdfPath)) {
                 const stats = fs.statSync(pdfPath);
                 console.log(`✓ PDF生成完了: ${path.basename(pdfPath)} (${Math.round(stats.size / 1024)}KB)`);
-
-                // プレビューページを閉じる
                 await printPage.close().catch(() => {});
-
-                return {
-                  type: 'pdf',
-                  pdfPath: pdfPath,
-                  count: selectedCount
-                };
+                return { type: 'pdf', pdfPath: pdfPath, count: selectedCount };
               }
             } catch (pdfError) {
               console.log('PDF生成エラー:', pdfError.message);
-            }
-
-            // PDFの直接生成に失敗した場合、印刷ボタンをクリックしてみる
-            console.log('\n印刷ボタンをクリック...');
-            const printBtnClicked = await printPage.evaluate(() => {
-              const buttons = Array.from(document.querySelectorAll('button'));
-              const printBtn = buttons.find(b => b.textContent?.trim() === '印刷');
-              if (printBtn) {
-                printBtn.click();
-                return true;
-              }
-              return false;
-            }).catch(() => false);
-
-            if (printBtnClicked) {
-              console.log('✓ 印刷ボタンをクリック');
-              await new Promise(resolve => setTimeout(resolve, 3000));
-            }
-
-            // ダウンロード完了を待機
-            console.log('\n⏳ ダウンロード完了を待機中...');
-            const downloadedFiles = await this.waitForDownload(15000);
-
-            if (downloadedFiles.length > 0) {
-              console.log(`✓ ${downloadedFiles.length}件のPDFをダウンロード`);
-
-              // PDFを合并
-              const mergedPath = path.join(DOWNLOADS_DIR, `merged_${timestamp}.pdf`);
-              await this.mergePDFs(downloadedFiles, mergedPath);
-
-              // 印刷プレビューページを閉じる
-              await printPage.close().catch(() => {});
-
-              return {
-                type: 'pdf',
-                pdfPath: mergedPath,
-                count: selectedCount
-              };
             }
 
             // 印刷プレビューページを閉じる
@@ -2228,7 +2342,7 @@ ${JSON.stringify(context, null, 2)}
     });
 
     console.log('Found', detailButtonCount, '詳細 buttons');
-    const maxProperties = Math.min(detailButtonCount, 3);
+    const maxProperties = Math.min(detailButtonCount, 5);
 
     for (let i = 0; i < maxProperties; i++) {
       try {
@@ -2291,7 +2405,9 @@ ${JSON.stringify(context, null, 2)}
 
   async searchProperties(username, password, conditions) {
     try {
-      await this.login(username, password);
+      // 使用自定义下载目录（如果提供）
+      const downloadDir = conditions.downloadDir || null;
+      await this.login(username, password, downloadDir);
       await this.navigateToRentalSearch();
       await this.fillSearchConditions(conditions);
       await this.executeSearch(conditions);  // 传递条件用于AI错误处理
