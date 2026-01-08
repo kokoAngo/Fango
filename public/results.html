@@ -232,6 +232,52 @@
             margin-top: 20px;
         }
 
+        /* Property IDs Section */
+        .property-ids-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f0f4ff;
+            border-radius: 15px;
+            border: 1px solid #667eea;
+        }
+
+        .property-ids-section h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .property-ids-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .property-id-tag {
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 0.95em;
+            color: #333;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .property-id-tag:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .property-id-tag.copied {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
         .loading {
             text-align: center;
             padding: 60px 20px;
@@ -283,6 +329,11 @@
                     <iframe id="pdfViewer" class="pdf-viewer" frameborder="0"></iframe>
                     <div class="pdf-actions">
                         <a id="pdfDownloadBtn" class="pdf-download-btn" download>PDFをダウンロード</a>
+                    </div>
+                    <!-- Property IDs Display -->
+                    <div id="propertyIdsSection" class="property-ids-section" style="display: none;">
+                        <h4>物件ID一覧 (クリックでコピー)</h4>
+                        <div id="propertyIdsList" class="property-ids-list"></div>
                     </div>
                 </div>
             </div>
@@ -369,6 +420,33 @@
                     `${loc.prefecture} ${loc.city}`
                 ).join(', ');
                 pdfInfo.textContent += ` - ${locations}`;
+            }
+
+            // Display property IDs
+            if (data.propertyIds && data.propertyIds.length > 0) {
+                const propertyIdsSection = document.getElementById('propertyIdsSection');
+                const propertyIdsList = document.getElementById('propertyIdsList');
+
+                propertyIdsSection.style.display = 'block';
+                propertyIdsList.innerHTML = '';
+
+                data.propertyIds.forEach((id, index) => {
+                    const tag = document.createElement('span');
+                    tag.className = 'property-id-tag';
+                    tag.textContent = id;
+                    tag.title = 'クリックでコピー';
+                    tag.onclick = function() {
+                        navigator.clipboard.writeText(id).then(() => {
+                            tag.classList.add('copied');
+                            tag.textContent = id + ' ✓';
+                            setTimeout(() => {
+                                tag.classList.remove('copied');
+                                tag.textContent = id;
+                            }, 1500);
+                        });
+                    };
+                    propertyIdsList.appendChild(tag);
+                });
             }
         }
 

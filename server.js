@@ -116,6 +116,7 @@ app.post('/api/search', async (req, res) => {
     let allProperties = [];
     let searchedLocations = [];
     let allPdfPaths = [];  // 複数PDFを収集
+    let allPropertyIds = [];  // 物件IDを収集
     let totalPdfCount = 0;
     let searchAttempts = 0;
 
@@ -170,6 +171,12 @@ app.post('/api/search', async (req, res) => {
           allPdfPaths.push(result.pdfPath);
           totalPdfCount += result.count || 1;
           searchedLocations.push(location);
+
+          // 物件IDを収集
+          if (result.propertyIds && result.propertyIds.length > 0) {
+            allPropertyIds.push(...result.propertyIds);
+            console.log(`  → 物件ID: ${result.propertyIds.length}件収集`);
+          }
 
           // 5件以上収集したら終了
           if (totalPdfCount >= MIN_PROPERTIES) {
@@ -232,6 +239,10 @@ app.post('/api/search', async (req, res) => {
 
       const pdfFilename = path.basename(finalPdfPath);
       console.log(`✓ 最終PDF: ${pdfFilename}`);
+      console.log(`✓ 物件ID: ${allPropertyIds.length}件`);
+      if (allPropertyIds.length > 0) {
+        allPropertyIds.forEach((id, i) => console.log(`  [${i + 1}] ${id}`));
+      }
 
       return res.json({
         success: true,
@@ -241,7 +252,8 @@ app.post('/api/search', async (req, res) => {
         parsed_requirements: parsedRequirements,
         searched_locations: searchedLocations,
         pdfUrl: `/downloads/${searchFolderName}/${pdfFilename}`,
-        count: totalPdfCount
+        count: totalPdfCount,
+        propertyIds: allPropertyIds
       });
     }
 

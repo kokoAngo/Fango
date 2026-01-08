@@ -2010,6 +2010,7 @@ ${JSON.stringify(context, null, 2)}
       console.log('物件チェックボックス:', checkboxInfo.total, '件 (全:', checkboxInfo.allTotal, '件)');
 
       let selectedCount = 0;
+      const selectedPropertyIds = [];  // 選択した物件IDを保存
 
       // 方法1: 個別のチェックボックスを選択（最大5件）
       if (checkboxInfo.total > 0) {
@@ -2032,14 +2033,33 @@ ${JSON.stringify(context, null, 2)}
 
             if (propertyCheckboxes[index] && !propertyCheckboxes[index].checked) {
               propertyCheckboxes[index].click();
-              return { success: true };
+
+              // 物件IDを抽出（12桁の数字）
+              let propertyId = null;
+              let parent = propertyCheckboxes[index].parentElement;
+              for (let i = 0; i < 10 && parent; i++) {
+                const text = parent.innerText || '';
+                const idMatch = text.match(/(\d{12})/);
+                if (idMatch) {
+                  propertyId = idMatch[1];
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+
+              return { success: true, propertyId: propertyId };
             }
-            return { success: false };
+            return { success: false, propertyId: null };
           }, i);
 
           if (selected.success) {
             selectedCount++;
-            console.log(`  ✓ 物件 ${i + 1} を選択`);
+            if (selected.propertyId) {
+              selectedPropertyIds.push(selected.propertyId);
+              console.log(`  ✓ 物件 ${i + 1} を選択 (ID: ${selected.propertyId})`);
+            } else {
+              console.log(`  ✓ 物件 ${i + 1} を選択`);
+            }
           }
           await new Promise(resolve => setTimeout(resolve, 300));
         }
@@ -2062,6 +2082,31 @@ ${JSON.stringify(context, null, 2)}
           console.log('  ✓ ページ内全選択を実行');
           selectedCount = Math.min(pageInfo.totalCount, 50); // 1ページ最大50件
           await new Promise(resolve => setTimeout(resolve, 1000));
+
+          // 全選択後に物件IDを抽出
+          const allIds = await this.page.evaluate(() => {
+            const ids = [];
+            const checkedBoxes = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
+            for (const cb of checkedBoxes) {
+              let parent = cb.parentElement;
+              for (let i = 0; i < 10 && parent; i++) {
+                const text = parent.innerText || '';
+                const idMatch = text.match(/(\d{12})/);
+                if (idMatch) {
+                  ids.push(idMatch[1]);
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+            }
+            return ids;
+          });
+
+          if (allIds.length > 0) {
+            selectedPropertyIds.push(...allIds);
+            console.log(`  物件ID: ${allIds.length}件抽出`);
+            allIds.forEach((id, i) => console.log(`    [${i + 1}] ${id}`));
+          }
         }
       }
 
@@ -2149,7 +2194,8 @@ ${JSON.stringify(context, null, 2)}
             return {
               type: 'pdf',
               pdfPath: downloadedFiles[0],
-              count: selectedCount
+              count: selectedCount,
+              propertyIds: selectedPropertyIds
             };
           }
           console.log('ダウンロードファイルが検出されませんでした');
@@ -2204,7 +2250,7 @@ ${JSON.stringify(context, null, 2)}
                   const stats = fs.statSync(pdfPath);
                   console.log(`✓ PDF直接ダウンロード完了: ${path.basename(pdfPath)} (${Math.round(stats.size / 1024)}KB)`);
                   await printPage.close().catch(() => {});
-                  return { type: 'pdf', pdfPath: pdfPath, count: selectedCount };
+                  return { type: 'pdf', pdfPath: pdfPath, count: selectedCount, propertyIds: selectedPropertyIds };
                 }
               } catch (fetchError) {
                 console.log('PDF直接ダウンロード失敗:', fetchError.message);
@@ -2257,7 +2303,7 @@ ${JSON.stringify(context, null, 2)}
                 if (embeddedDownloads.length > 0) {
                   console.log(`✓ 埋め込みPDFダウンロード完了: ${embeddedDownloads.length}件`);
                   await printPage.close().catch(() => {});
-                  return { type: 'pdf', pdfPath: embeddedDownloads[0], count: selectedCount };
+                  return { type: 'pdf', pdfPath: embeddedDownloads[0], count: selectedCount, propertyIds: selectedPropertyIds };
                 }
               } catch (embeddedError) {
                 console.log('埋め込みPDFダウンロード失敗:', embeddedError.message);
@@ -2289,7 +2335,7 @@ ${JSON.stringify(context, null, 2)}
               if (triggeredDownloads.length > 0) {
                 console.log(`✓ ${triggeredDownloads.length}件のPDFをダウンロード`);
                 await printPage.close().catch(() => {});
-                return { type: 'pdf', pdfPath: triggeredDownloads[0], count: selectedCount };
+                return { type: 'pdf', pdfPath: triggeredDownloads[0], count: selectedCount, propertyIds: selectedPropertyIds };
               }
             }
 
@@ -2307,7 +2353,7 @@ ${JSON.stringify(context, null, 2)}
                 const stats = fs.statSync(pdfPath);
                 console.log(`✓ PDF生成完了: ${path.basename(pdfPath)} (${Math.round(stats.size / 1024)}KB)`);
                 await printPage.close().catch(() => {});
-                return { type: 'pdf', pdfPath: pdfPath, count: selectedCount };
+                return { type: 'pdf', pdfPath: pdfPath, count: selectedCount, propertyIds: selectedPropertyIds };
               }
             } catch (pdfError) {
               console.log('PDF生成エラー:', pdfError.message);
