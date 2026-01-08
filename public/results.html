@@ -171,6 +171,67 @@
             margin-bottom: 30px;
         }
 
+        /* PDF Display Section */
+        .pdf-section {
+            margin-bottom: 30px;
+        }
+
+        .pdf-container {
+            background: #f8f9fa;
+            border: 2px solid #667eea;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .pdf-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .pdf-header h3 {
+            color: #667eea;
+            font-size: 1.5em;
+        }
+
+        .pdf-info {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .pdf-viewer {
+            width: 100%;
+            height: 800px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            background: white;
+        }
+
+        .pdf-download-btn {
+            display: inline-block;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .pdf-download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
+        }
+
+        .pdf-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
         .loading {
             text-align: center;
             padding: 60px 20px;
@@ -212,6 +273,20 @@
                 <p>結果を読み込んでいます...</p>
             </div>
 
+            <!-- PDF Display Section -->
+            <div id="pdfSection" class="pdf-section" style="display: none;">
+                <div class="pdf-container">
+                    <div class="pdf-header">
+                        <h3>物件図面 PDF</h3>
+                        <span class="pdf-info" id="pdfInfo"></span>
+                    </div>
+                    <iframe id="pdfViewer" class="pdf-viewer" frameborder="0"></iframe>
+                    <div class="pdf-actions">
+                        <a id="pdfDownloadBtn" class="pdf-download-btn" download>PDFをダウンロード</a>
+                    </div>
+                </div>
+            </div>
+
             <div id="propertiesGrid" class="properties-grid"></div>
 
             <div id="noResults" class="no-results" style="display: none;">
@@ -242,10 +317,18 @@
             document.getElementById('mbtiType').textContent =
                 `あなたのタイプ: ${mbtiType || data.mbti_type || ''}`;
 
-            // Display properties
+            const count = document.getElementById('resultsCount');
+
+            // Check if result is PDF type
+            if (data.type === 'pdf' && data.pdfUrl) {
+                displayPDF(data);
+                count.textContent = `${data.count || 1}件の物件図面を取得しました`;
+                return;
+            }
+
+            // Display properties (fallback)
             const properties = data.properties || [];
             const grid = document.getElementById('propertiesGrid');
-            const count = document.getElementById('resultsCount');
 
             if (properties.length === 0) {
                 document.getElementById('noResults').style.display = 'block';
@@ -259,6 +342,34 @@
                 const card = createPropertyCard(property, index);
                 grid.appendChild(card);
             });
+        }
+
+        function displayPDF(data) {
+            const pdfSection = document.getElementById('pdfSection');
+            const pdfViewer = document.getElementById('pdfViewer');
+            const pdfDownloadBtn = document.getElementById('pdfDownloadBtn');
+            const pdfInfo = document.getElementById('pdfInfo');
+
+            // Show PDF section
+            pdfSection.style.display = 'block';
+
+            // Set PDF source
+            pdfViewer.src = data.pdfUrl;
+
+            // Set download link
+            pdfDownloadBtn.href = data.pdfUrl;
+            pdfDownloadBtn.download = 'properties.pdf';
+
+            // Set info
+            pdfInfo.textContent = `${data.count || 1}件の物件`;
+
+            // Also show searched locations if available
+            if (data.searched_locations && data.searched_locations.length > 0) {
+                const locations = data.searched_locations.map(loc =>
+                    `${loc.prefecture} ${loc.city}`
+                ).join(', ');
+                pdfInfo.textContent += ` - ${locations}`;
+            }
         }
 
         function createPropertyCard(property, index) {

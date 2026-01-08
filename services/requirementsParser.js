@@ -35,49 +35,60 @@ class RequirementsParser {
       '__BVID__376': '沿線名',
       '__BVID__380': '駅名',
       '__BVID__385': '駅から徒歩',
-      '__BVID__456': '賃料（下限）',
-      '__BVID__458': '賃料（上限）',
+      '__BVID__452': '賃料（下限）',
+      '__BVID__454': '賃料（上限）',
       '__BVID__481': '建物面積（下限）',
       '__BVID__483': '建物面積（上限）',
       '__BVID__520': '所在階（下限）',
       '__BVID__522': '所在階（上限）',
       '__BVID__525': '向き',
+      '__BVID__542': '駐車場',
       '__BVID__567': '備考1（設備条件検索用）',
       '__BVID__311': '新築',
       '__BVID__314': '図面あり',
       '__BVID__316': '画像あり',
       '__BVID__496': '角部屋',
-      '__BVID__501': 'ワンルーム',
-      '__BVID__503': 'K',
-      '__BVID__505': 'DK',
-      '__BVID__507': 'LK',
-      '__BVID__509': 'LDK',
-      '__BVID__511': 'SK',
-      '__BVID__513': 'SDK',
-      '__BVID__515': 'SLK',
-      '__BVID__517': 'SLDK'
+      '__BVID__497': 'ワンルーム',
+      '__BVID__499': 'K',
+      '__BVID__501': 'DK',
+      '__BVID__503': 'LK',
+      '__BVID__505': 'LDK',
+      '__BVID__507': 'SK',
+      '__BVID__509': 'SDK',
+      '__BVID__511': 'SLK',
+      '__BVID__513': 'SLDK'
     };
 
     // 房型映射到REINS checkbox IDs
+    // __BVID__497: ワンルーム, __BVID__499: K, __BVID__501: DK, __BVID__503: LK
+    // __BVID__505: LDK, __BVID__507: SK, __BVID__509: SDK, __BVID__511: SLK, __BVID__513: SLDK
     this.layoutMapping = {
-      'ワンルーム': '__BVID__501',
-      '1R': '__BVID__501',
-      'K': '__BVID__503',
-      '1K': '__BVID__503',
-      'DK': '__BVID__505',
-      '1DK': '__BVID__505',
-      '2DK': '__BVID__505',
-      'LK': '__BVID__507',
-      '1LK': '__BVID__507',
-      'LDK': '__BVID__509',
-      '1LDK': '__BVID__509',
-      '2LDK': '__BVID__509',
-      '3LDK': '__BVID__509',
-      '4LDK': '__BVID__509',
-      'SK': '__BVID__511',
-      'SDK': '__BVID__513',
-      'SLK': '__BVID__515',
-      'SLDK': '__BVID__517'
+      'ワンルーム': '__BVID__497',
+      '1R': '__BVID__497',
+      'K': '__BVID__499',
+      '1K': '__BVID__499',
+      '2K': '__BVID__499',
+      'DK': '__BVID__501',
+      '1DK': '__BVID__501',
+      '2DK': '__BVID__501',
+      '3DK': '__BVID__501',
+      'LK': '__BVID__503',
+      '1LK': '__BVID__503',
+      '2LK': '__BVID__503',
+      'LDK': '__BVID__505',
+      '1LDK': '__BVID__505',
+      '2LDK': '__BVID__505',
+      '3LDK': '__BVID__505',
+      '4LDK': '__BVID__505',
+      'SK': '__BVID__507',
+      '1SK': '__BVID__507',
+      'SDK': '__BVID__509',
+      '1SDK': '__BVID__509',
+      'SLK': '__BVID__511',
+      '1SLK': '__BVID__511',
+      'SLDK': '__BVID__513',
+      '1SLDK': '__BVID__513',
+      '2SLDK': '__BVID__513'
     };
 
     // 方位映射
@@ -108,8 +119,10 @@ class RequirementsParser {
     const result = {
       prefecture: null,
       cities: [],              // 改为数组，支持多个区
-      station: null,
-      line: null,
+      station: null,           // 単一駅名
+      startStation: null,      // 始発駅（区間指定用）
+      endStation: null,        // 終点駅（区間指定用）
+      line: null,              // 沿線名
       walkMinutes: null,
       rentMin: null,
       rentMax: null,
@@ -123,15 +136,26 @@ class RequirementsParser {
       corner: false,
       withDrawing: false,
       withImage: false,
-      floorMin: null,          // 新增：階数
+      floorMin: null,          // 新増：階数
+      parking: null,           // 新増：駐車場 (1=有, 2=無, 3=近隣確保)
       keywords: []
     };
 
     // 提取所有区名（去除前缀符号）
+    // 注意：排除沿線名（如有楽町線）误匹配
     const cityMatches = text.match(/[・\-\s]*([^\s・\-、。\n]+(?:区|市|町|村))/g);
     if (cityMatches) {
       for (const match of cityMatches) {
-        const city = match.replace(/^[・\-\s]+/, '').trim();
+        let city = match.replace(/^[・\-\s]+/, '').trim();
+        // 排除沿線名（如：有楽町線 → 有楽町 の誤検出を防ぐ）
+        if (!city || city.includes('線') || text.includes(city + '線')) {
+          continue;
+        }
+        // 「東京都新宿区」のような形式から「新宿区」だけを抽出
+        const cityOnlyMatch = city.match(/([^\s都府県]+(?:区|市|町|村))$/);
+        if (cityOnlyMatch) {
+          city = cityOnlyMatch[1];
+        }
         if (city && !result.cities.includes(city)) {
           result.cities.push(city);
         }
@@ -156,16 +180,30 @@ class RequirementsParser {
       }
     }
 
-    // 提取车站名
-    const stationMatch = text.match(/([^\s、。・\n]+)駅/);
-    if (stationMatch) {
-      result.station = stationMatch[1];
+    // 提取沿線名 - 先提取沿線，再提取駅
+    const linePatterns = [
+      /([^\s、。・\n]+線)沿線?/,   // XX線沿線、XX線沿い
+      /([^\s、。・\n]+線)/         // XX線
+    ];
+    for (const pattern of linePatterns) {
+      const match = text.match(pattern);
+      if (match && !match[1].includes('沿')) {
+        result.line = match[1];
+        break;
+      }
     }
 
-    // 提取沿線名
-    const lineMatch = text.match(/([^\s、。・\n]+線)/);
-    if (lineMatch && !lineMatch[1].includes('沿')) {
-      result.line = lineMatch[1];
+    // 提取駅区間（XX駅〜YY駅、XX駅からYY駅）
+    const stationRangeMatch = text.match(/([^\s、。・\n]+)駅[〜～\-からまで]+([^\s、。・\n]+)駅/);
+    if (stationRangeMatch) {
+      result.startStation = stationRangeMatch[1];
+      result.endStation = stationRangeMatch[2];
+    } else {
+      // 提取单一车站名
+      const stationMatch = text.match(/([^\s、。・\n]+)駅/);
+      if (stationMatch) {
+        result.station = stationMatch[1];
+      }
     }
 
     // 提取徒歩時間
@@ -238,17 +276,29 @@ class RequirementsParser {
       }
     }
 
-    // 提取方位 - 包括"日当たり良好"
-    if (text.includes('日当たり') || text.includes('日当り') || text.includes('陽当たり')) {
-      result.direction = '南';  // 日当たり良好 = 南向き
-    }
-
-    const directionPatterns = ['南向き', '北向き', '東向き', '西向き', '南東', '南西', '北東', '北西'];
+    // 提取方位 - 只有明确指定方向时才设置
+    // 注意: "日当たりの良い" などは好みであり、厳格な要件ではないため、方位は設定しない
+    const directionPatterns = ['南向き', '北向き', '東向き', '西向き', '南東向き', '南西向き', '北東向き', '北西向き'];
     for (const dir of directionPatterns) {
       if (text.includes(dir)) {
         const cleanDir = dir.replace('向き', '');
         result.direction = cleanDir;
         break;
+      }
+    }
+    // 方位のみの指定も検出
+    if (!result.direction) {
+      const simpleDirections = [
+        { pattern: '南側', dir: '南' },
+        { pattern: '東側', dir: '東' },
+        { pattern: '西側', dir: '西' },
+        { pattern: '北側', dir: '北' }
+      ];
+      for (const { pattern, dir } of simpleDirections) {
+        if (text.includes(pattern)) {
+          result.direction = dir;
+          break;
+        }
       }
     }
 
@@ -275,9 +325,11 @@ class RequirementsParser {
       result.isNew = true;
     }
 
-    if (text.includes('ペット可') || text.includes('ペット相談') || text.includes('ペットOK')) {
+    if (text.includes('ペット可') || text.includes('ペット相談') || text.includes('ペットOK') ||
+        text.includes('猫を飼') || text.includes('犬を飼') || text.includes('ペットを飼') ||
+        text.includes('猫飼育') || text.includes('犬飼育') || text.includes('ペット飼育')) {
       result.petAllowed = true;
-      result.keywords.push('ペット');
+      result.keywords.push('ペット可');
     }
 
     if (text.includes('角部屋')) {
@@ -292,14 +344,43 @@ class RequirementsParser {
       result.withImage = true;
     }
 
-    // 提取其他关键词
+    // 提取駐車場条件
+    if (text.includes('駐車場なし') || text.includes('駐車場無') || text.includes('駐車場不要')) {
+      result.parking = '2';  // 無／空無
+    } else if (text.includes('近隣駐車場') || text.includes('駐車場近隣') ||
+               (text.includes('近隣') && text.includes('駐車場'))) {
+      result.parking = '3';  // 近隣確保
+      // 駐車場は駐車場ドロップダウンで処理するため、keywordsには追加しない
+    } else if (text.includes('駐車場あり') || text.includes('駐車場有') || text.includes('駐車場付') ||
+        text.match(/駐車場[^\s]*可/) || text.includes('カースペース') ||
+        text.includes('駐車場が必要') || text.includes('駐車場必要') || text.includes('駐車場を希望') ||
+        text.includes('駐車場希望') || text.match(/駐車場.*欲しい/) || text.match(/駐車場.*ほしい/)) {
+      result.parking = '1';  // 有／空有
+      // 駐車場は駐車場ドロップダウンで処理するため、keywordsには追加しない
+    }
+
+    // 提取其他关键词（設備・条件・住宅性能等の入力ガイドで選択）
     const keywordPatterns = [
-      'オートロック', 'エアコン', 'バストイレ別', 'バス・トイレ別',
-      '駐車場', '宅配ボックス', 'インターネット', 'Wi-Fi', 'ウォークインクローゼット',
-      'システムキッチン', 'IH', 'ガスコンロ', '追焚', '浴室乾燥',
-      'フローリング', '室内洗濯機', '最上階', '礼金なし', '敷金なし',
-      '即入居', 'リノベーション', 'デザイナーズ', 'TVモニター', 'モニター付',
-      'インターホン'
+      // 空調・暖房
+      '冷房', '暖房', 'エアコン', '床暖房', '堀ごたつ', '灯油ストーブ', 'ＦＦ暖房', 'セントラルヒーティング',
+      // セキュリティ
+      'オートロック', 'TVモニター', 'モニター付', 'インターホン', '防犯カメラ', 'ディンプルキー',
+      // キッチン
+      'システムキッチン', 'IH', 'ガスコンロ', 'カウンターキッチン', '食器洗浄機', '食洗機',
+      // バス・トイレ
+      'バストイレ別', 'バス・トイレ別', '追焚', '浴室乾燥', '温水洗浄便座', 'ウォシュレット',
+      // 収納
+      'ウォークインクローゼット', 'シューズボックス', '床下収納',
+      // 設備
+      '宅配ボックス', 'インターネット', 'Wi-Fi', '光ファイバー', 'CATV', 'BS', 'CS',
+      // 内装
+      'フローリング', 'クッションフロア', '畳',
+      // 洗濯
+      '室内洗濯機', '洗濯機置場', '乾燥機',
+      // その他
+      '最上階', '角部屋', 'バルコニー', 'ルーフバルコニー', 'ロフト', 'メゾネット',
+      '礼金なし', '敷金なし', '即入居', 'リノベーション', 'デザイナーズ',
+      'ペット可', 'ペット相談', '楽器可', '事務所可', 'SOHO可'
     ];
 
     for (const keyword of keywordPatterns) {
@@ -339,10 +420,13 @@ class RequirementsParser {
       fields.textInputs['__BVID__376'] = parsed.line;
     }
 
-    // 駅名
+    // 駅名（単一指定）
     if (parsed.station) {
       fields.textInputs['__BVID__380'] = parsed.station;
     }
+
+    // 駅区間（入力ガイド用に保持、テキスト入力には含めない）
+    // startStation, endStationはuserRequirementsとして渡される
 
     // 駅から徒歩
     if (parsed.walkMinutes) {
@@ -351,10 +435,10 @@ class RequirementsParser {
 
     // 賃料 (単位：万円)
     if (parsed.rentMin) {
-      fields.textInputs['__BVID__456'] = parsed.rentMin.toString();
+      fields.textInputs['__BVID__452'] = parsed.rentMin.toString();
     }
     if (parsed.rentMax) {
-      fields.textInputs['__BVID__458'] = parsed.rentMax.toString();
+      fields.textInputs['__BVID__454'] = parsed.rentMax.toString();
     }
 
     // 建物面積
@@ -383,6 +467,11 @@ class RequirementsParser {
     // 向き
     if (parsed.direction && this.directionMapping[parsed.direction]) {
       fields.selects['__BVID__525'] = this.directionMapping[parsed.direction];
+    }
+
+    // 駐車場 (1=有／空有, 2=無／空無, 3=近隣確保)
+    if (parsed.parking) {
+      fields.selects['__BVID__542'] = parsed.parking;
     }
 
     // Checkboxes
