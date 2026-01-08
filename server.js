@@ -57,6 +57,9 @@ app.post('/api/search', async (req, res) => {
     console.log('='.repeat(60));
     console.log('User requirements:', userRequirements);
 
+    // 新しい検索セッション開始時に町丁目選択履歴をクリア
+    reinsService.clearChoHistory();
+
     // AI で需求を解析（位置情報も含めて一括解析）
     let parsedRequirements = await aiRequirementsParser.parse(userRequirements);
     let reinsFields;
@@ -154,7 +157,8 @@ app.post('/api/search', async (req, res) => {
         ...mbtiConditions,
         userRequirements: locationRequirements,
         reinsFields: locationReinsFields,
-        downloadDir: searchDownloadDir  // 検索専用フォルダを指定
+        downloadDir: searchDownloadDir,  // 検索専用フォルダを指定
+        originalUserInput: userRequirements  // 町丁目AI選択用
       };
 
       try {

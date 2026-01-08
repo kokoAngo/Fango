@@ -63,6 +63,35 @@ class AIRequirementsParser {
   "keywords": ["その他のキーワード配列"]
 }
 
+【最重要ルール - 検索方式の優先順位】
+検索には「所在地」「沿線」「バス路線」「その他の交通手段」の4つの方式があります。
+優先順位: 所在地 > 沿線 > バス路線 > その他の交通手段
+※ これら4つのうち1つだけを使用します。複数は使用しません。
+
+1. 【所在地を優先】ユーザーが「○○駅の近く」と言っても、具体的な沿線名（例：山手線、東急東横線）を
+   明示していない場合は、line/station は null にして、locations のみで検索します。
+
+2. 【町丁目の分析と特定】ユーザーの要望を受けたら、必ず町丁目レベルまで分析してください。
+   「○○の近く」と言われた場合、その地点から徒歩10分圏内の町丁目を detail に含めてください：
+   - 例: 「蒲田駅の近くに住みたい」→ locations: [
+       {"prefecture": "東京都", "city": "大田区", "detail": "蒲田"},
+       {"prefecture": "東京都", "city": "大田区", "detail": "西蒲田"},
+       {"prefecture": "東京都", "city": "大田区", "detail": "南蒲田"}
+     ], line: null, station: null
+   - 例: 「東工大大岡山キャンパスの近く」→ locations: [
+       {"prefecture": "東京都", "city": "目黒区", "detail": "大岡山"},
+       {"prefecture": "東京都", "city": "大田区", "detail": "北千束"},
+       {"prefecture": "東京都", "city": "大田区", "detail": "石川町"},
+       {"prefecture": "東京都", "city": "大田区", "detail": "南千束"}
+     ], line: null, station: null
+
+3. 【沿線を使用する場合】具体的な沿線名が明示されている場合のみ line と station を設定します。
+   - 例: 「東急東横線沿いに住みたい」→ line: "東急東横線", locations: []
+   - 例: 「JR山手線の渋谷駅周辺」→ line: "JR山手線", station: "渋谷", locations: []
+
+4. 【全域の使用制限】「全域」は情報が非常に曖昧で町丁目を特定できない場合のみ使用してください。
+   可能な限り具体的な町丁目を推定・特定してください。
+
 注意事項:
 1. 不明な項目はnullにしてください
 2. 【重要】locations は必ず配列で、近隣エリアを全て含めてください:
@@ -70,13 +99,6 @@ class AIRequirementsParser {
        {"prefecture": "東京都", "city": "目黒区", "detail": "大岡山"},
        {"prefecture": "東京都", "city": "大田区", "detail": "北千束"},
        {"prefecture": "東京都", "city": "品川区", "detail": "旗の台"}
-     ]
-   - 例: 「大岡山駅」→ locations: [
-       {"prefecture": "東京都", "city": "大田区", "detail": "北千束"},
-       {"prefecture": "東京都", "city": "目黒区", "detail": "大岡山"}
-     ]
-   - 例: 「渋谷駅」→ locations: [
-       {"prefecture": "東京都", "city": "渋谷区", "detail": "渋谷"}
      ]
 3. 「日当たり良好」などは direction に変換しないでください
 4. 設備条件の例: オートロック、宅配ボックス、バストイレ別、エアコン、追焚、浴室乾燥、床暖房、

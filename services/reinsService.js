@@ -16,6 +16,15 @@ class ReinsService {
     this.page = null;
     this.downloadedFiles = [];
     this.openaiClient = null;
+    this.selectedChoHistory = new Set();  // 選択済み町丁目を記録（重複選択防止）
+  }
+
+  /**
+   * 選択済み町丁目履歴をクリア
+   */
+  clearChoHistory() {
+    this.selectedChoHistory.clear();
+    console.log('[ChoHistory] 選択履歴をクリアしました');
   }
 
   /**
@@ -314,8 +323,12 @@ ${JSON.stringify(context, null, 2)}
    * 入力ガイドを使用して地域を選択
    * select要素を使用した多段選択に対応
    * フロー: 地方 → 都道府県 → 次へ → 地域区分 → 市区町村 → 次へ → 詳細地点 → 町丁目 → 決定
+   * @param {string} prefecture - 都道府県名
+   * @param {Array} cities - 市区町村配列
+   * @param {string} userInput - ユーザーの元の入力（町丁目AI選択用）
+   * @param {string} detail - 詳細地名（町丁目AI選択用）
    */
-  async selectLocationViaGuide(prefecture, cities) {
+  async selectLocationViaGuide(prefecture, cities, userInput = null, detail = null) {
     try {
       // 分析フェーズ
       const { normalizedPref, city, path } = this.analyzeLocationRequirements(prefecture, cities);
@@ -497,9 +510,48 @@ ${JSON.stringify(context, null, 2)}
       await new Promise(resolve => setTimeout(resolve, 1500));
       await this.page.screenshot({ path: 'debug-location-guide-6.png' });
 
-      // Step 8: 町丁目を選択（2番目のselect - 全域や具体的な丁目）
-      console.log('  [Step 8] 町丁目を選択: 全域（優先）');
-      const choSelected = await this.selectChoFromDropdown(1);
+      // Step 8: 町丁目を選択（2番目のselect - AI支援で選択）
+      console.log('  [Step 8] 町丁目を選択...');
+
+      // 町丁目の全オプションを取得
+      const choOptions = await this.getChoOptions(1);
+      console.log(`           【利用可能な町丁目】 ${choOptions.length}件`);
+      if (choOptions.length > 0 && choOptions.length <= 20) {
+        choOptions.forEach((opt, i) => console.log(`             [${i}] ${opt}`));
+      } else if (choOptions.length > 20) {
+        choOptions.slice(0, 10).forEach((opt, i) => console.log(`             [${i}] ${opt}`));
+        console.log(`             ... 他 ${choOptions.length - 10} 件`);
+      }
+
+      let choSelected = false;
+
+      // AI支援で町丁目を選択（ユーザー入力または詳細情報がある場合）
+      if ((userInput || detail) && choOptions.length > 1) {
+        console.log('\n           🤖 AIで最適な町丁目を選択中...');
+        const aiSelectedCho = await this.selectChoWithAI(choOptions, userInput, detail, city);
+
+        if (aiSelectedCho && aiSelectedCho.length > 0) {
+          console.log(`           AI推奨: ${aiSelectedCho.join(', ')}`);
+          // AIが推奨した最初の町丁目を選択
+          for (const cho of aiSelectedCho) {
+            choSelected = await this.selectFromDropdown(1, cho);
+            if (choSelected) {
+              console.log(`           → ✓ 「${cho}」を選択`);
+              // 選択済み履歴に追加（重複検索防止）
+              this.selectedChoHistory.add(cho);
+              console.log(`           → [履歴] 「${cho}」を記録 (累計: ${this.selectedChoHistory.size}件)`);
+              break;
+            }
+          }
+        }
+      }
+
+      // AI選択が失敗した場合、従来の方法（全域優先）にフォールバック
+      if (!choSelected) {
+        console.log('           → 全域または最初のオプションを選択');
+        choSelected = await this.selectChoFromDropdown(1);
+      }
+
       console.log('           → ' + (choSelected ? '✓ 成功' : '✗ 失敗'));
       await new Promise(resolve => setTimeout(resolve, 1500));
       await this.page.screenshot({ path: 'debug-location-guide-7.png' });
@@ -1037,6 +1089,188 @@ ${JSON.stringify(context, null, 2)}
   }
 
   /**
+   * モーダル内のselect要素から全オプションを取得
+   * @param {number} selectIndex - モーダル内のselect要素のインデックス（0始まり）
+   * @returns {Array<string>} オプションテキストの配列
+   */
+  async getChoOptions(selectIndex) {
+    const options = await this.page.evaluate((index) => {
+      const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"], .modal');
+      const container = modal || document;
+      const selects = container.querySelectorAll('select.p-listbox-input, select.custom-select, select');
+
+      if (selects.length <= index) {
+        return [];
+      }
+
+      const select = selects[index];
+      return Array.from(select.options)
+        .filter(o => o.value && !o.disabled)
+        .map(o => o.text.trim());
+    }, selectIndex);
+
+    return options || [];
+  }
+
+  /**
+   * AIを使用して最適な町丁目を選択
+   * @param {Array<string>} options - 利用可能な町丁目オプション
+   * @param {string} userInput - ユーザーの元の入力
+   * @param {string} detail - 詳細地名（AIパーサーから）
+   * @param {string} city - 市区町村名
+   * @returns {Array<string>} AIが推奨する町丁目の配列
+   */
+  async selectChoWithAI(options, userInput, detail, city) {
+    const client = this.initOpenAI();
+    if (!client) {
+      console.log('           [AI] OpenAI API未設定、スキップ');
+      return null;
+    }
+
+    // 選択済み履歴を取得
+    const alreadySelected = Array.from(this.selectedChoHistory);
+    if (alreadySelected.length > 0) {
+      console.log(`           [AI] 選択済み（除外対象）: ${alreadySelected.join(', ')}`);
+    }
+
+    // 選択済みを除外したオプションリスト
+    const availableOptions = options.filter(o => !this.selectedChoHistory.has(o));
+    if (availableOptions.length === 0) {
+      console.log('           [AI] 利用可能な未選択オプションがありません');
+      return null;
+    }
+
+    try {
+      // 選択済み情報をプロンプトに含める
+      const excludeSection = alreadySelected.length > 0
+        ? `\n【既に選択済み（除外すること）】\n${alreadySelected.map(s => `- ${s}`).join('\n')}\n`
+        : '';
+
+      const prompt = `あなたは不動産検索のアシスタントです。
+ユーザーの希望に最も適した町丁目を選んでください。
+
+【ユーザーの希望】
+${userInput || '(未指定)'}
+
+【詳細地名のヒント】
+${detail || '(未指定)'}
+
+【現在の市区町村】
+${city || '(未指定)'}
+${excludeSection}
+【選択可能な町丁目オプション】
+${availableOptions.map((o, i) => `${i + 1}. ${o}`).join('\n')}
+
+【指示】
+- ユーザーの希望（駅、大学、施設など）から徒歩10分圏内の町丁目を選んでください
+- 「全域」は選ばないでください（具体的な町丁目を選ぶ）
+- 既に選択済みの町丁目は絶対に選ばないでください
+- 最も適切な1〜3件の町丁目名を、優先順位の高い順にJSON配列で返してください
+- オプションリストに完全一致する名前のみ返してください
+
+【回答形式】
+["町丁目1", "町丁目2"]
+
+回答:`;
+
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 200,
+        temperature: 0.1,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const content = response.choices[0].message.content.trim();
+      console.log(`           [AI] 応答: ${content}`);
+
+      // JSON配列を抽出
+      const jsonMatch = content.match(/\[[\s\S]*?\]/);
+      if (jsonMatch) {
+        const selected = JSON.parse(jsonMatch[0]);
+        // オプションリストに存在し、かつ未選択のもののみ返す
+        return selected.filter(s => availableOptions.includes(s) && !this.selectedChoHistory.has(s));
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`           [AI] エラー: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * AI を使用して設備・条件を選択
+   * ユーザーの希望条件に基づいて最適な設備オプションを推奨
+   * @param {Array<{index: number, label: string}>} options - 利用可能な設備オプション
+   * @param {string} userInput - ユーザーの元の入力
+   * @returns {Array<string>} AIが推奨する設備オプションのラベル配列
+   */
+  async selectEquipmentWithAI(options, userInput) {
+    const client = this.initOpenAI();
+    if (!client) {
+      console.log('    [AI] OpenAI API未設定、スキップ');
+      return null;
+    }
+
+    try {
+      // オプションリストを整形（最大100件）
+      const displayOptions = options.slice(0, 100);
+      const optionList = displayOptions.map((o, i) => `${i + 1}. ${o.label}`).join('\n');
+
+      const prompt = `あなたは不動産検索のアシスタントです。
+ユーザーの希望に基づいて設備・条件を選んでください。
+
+【ユーザーの希望】
+${userInput || '(未指定)'}
+
+【選択可能な設備・条件オプション】
+${optionList}
+
+【重要な指示】
+- ユーザーが明示的に希望した設備・条件のみを選んでください
+- 過度な推測はしないでください（例：オートロックは全員が必要とは限りません）
+- ユーザーが言及していない設備は選ばないでください
+- 以下のような明示的な希望のみ選択：
+  * 「猫を飼いたい」「ペット可」→ ペット可/相談
+  * 「日当たり良好」「南向き」→ 南向き関連
+  * 「セキュリティ重視」「防犯」→ オートロック、防犯カメラ等
+  * 「インターネット必須」「Wi-Fi」→ インターネット関連
+- オプションリストに完全一致する名前のみ返してください
+- 該当する設備がない場合は空配列 [] を返してください
+
+【回答形式】
+["設備1", "設備2"]
+
+回答:`;
+
+      console.log('    [AI] 設備・条件を分析中...');
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 300,
+        temperature: 0.1,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const content = response.choices[0].message.content.trim();
+      console.log(`    [AI] 応答: ${content}`);
+
+      // JSON配列を抽出
+      const jsonMatch = content.match(/\[[\s\S]*?\]/);
+      if (jsonMatch) {
+        const selected = JSON.parse(jsonMatch[0]);
+        // オプションリストに存在するもののみ返す
+        const validLabels = options.map(o => o.label);
+        return selected.filter(s => validLabels.includes(s));
+      }
+
+      return null;
+    } catch (error) {
+      console.log(`    [AI] エラー: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * モーダル内のselect要素の最初のオプションを選択
    * 選択前に全オプションを遍歴して表示
    * @param {number} selectIndex - モーダル内のselect要素のインデックス（0始まり）
@@ -1229,15 +1463,19 @@ ${JSON.stringify(context, null, 2)}
 
   /**
    * 設備・条件を入力ガイドから選択
-   * 選択前に全オプションを遍歴し、最適なマッチを見つける
-   * @param {string[]} keywords - 選択したい設備・条件のキーワード
+   * AI支援で最適なオプションを選択、またはキーワードベースでマッチング
+   * @param {string[]} keywords - 選択したい設備・条件のキーワード（フォールバック用）
+   * @param {string} userInput - ユーザーの元の入力（AI選択用）
    */
-  async selectEquipmentFromGuide(keywords) {
+  async selectEquipmentFromGuide(keywords, userInput = null) {
     try {
       console.log('\n┌─────────────────────────────────────');
       console.log('│ 設備・条件の選択');
       console.log('└─────────────────────────────────────');
-      console.log('  選択キーワード:', keywords.join(', '));
+      if (userInput) {
+        console.log('  ユーザー希望:', userInput.substring(0, 50) + (userInput.length > 50 ? '...' : ''));
+      }
+      console.log('  キーワード:', keywords.join(', ') || '(なし)');
 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -1289,7 +1527,43 @@ ${JSON.stringify(context, null, 2)}
         console.log(`    ... 他 ${allOptions.total - 30} 件`);
       }
 
-      // ========== Phase 2: キーワードマッチング ==========
+      // ========== Phase 2: AI支援選択 ==========
+      let effectiveKeywords = keywords || [];
+
+      if (userInput) {
+        console.log('\n  🤖 AIで最適な設備・条件を分析中...');
+        const aiSelectedEquipment = await this.selectEquipmentWithAI(allOptions.options, userInput);
+
+        if (aiSelectedEquipment && aiSelectedEquipment.length > 0) {
+          console.log(`  AI推奨: ${aiSelectedEquipment.join(', ')}`);
+          // AIの推奨を優先的に使用
+          effectiveKeywords = [...aiSelectedEquipment, ...effectiveKeywords];
+          // 重複を除去
+          effectiveKeywords = [...new Set(effectiveKeywords)];
+        } else {
+          console.log('  AI選択なし、キーワードベースで処理');
+        }
+      }
+
+      if (effectiveKeywords.length === 0) {
+        console.log('  選択する設備がありません');
+        // 決定ボタンをクリックしてモーダルを閉じる
+        await this.page.evaluate(() => {
+          const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"]');
+          const buttons = modal?.querySelectorAll('button') || [];
+          for (const btn of buttons) {
+            if (btn.textContent?.trim() === '決定') {
+              btn.click();
+              return true;
+            }
+          }
+          return false;
+        });
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        return [];
+      }
+
+      // ========== Phase 3: キーワードマッチング ==========
       console.log('\n  【マッチング処理】');
 
       const selected = await this.page.evaluate((keywordList, allOpts) => {
@@ -1357,7 +1631,7 @@ ${JSON.stringify(context, null, 2)}
         }
 
         return results;
-      }, keywords, allOptions.options);
+      }, effectiveKeywords, allOptions.options);
 
       // 結果を表示
       selected.forEach(item => {
@@ -1369,12 +1643,12 @@ ${JSON.stringify(context, null, 2)}
       });
 
       const successCount = selected.filter(s => s.label).length;
-      console.log(`\n  選択結果: ${successCount}/${keywords.length} 件成功`);
+      console.log(`\n  選択結果: ${successCount}/${effectiveKeywords.length} 件成功`);
 
       await new Promise(resolve => setTimeout(resolve, 1000));
       await this.page.screenshot({ path: 'debug-equipment-selected.png' });
 
-      // ========== Phase 3: 決定ボタンをクリック ==========
+      // ========== Phase 4: 決定ボタンをクリック ==========
       console.log('\n  「決定」をクリック...');
       const closeClicked = await this.page.evaluate(() => {
         const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"]');
@@ -1453,8 +1727,13 @@ ${JSON.stringify(context, null, 2)}
       const prefecture = userRequirements.prefecture || textInputs['__BVID__325'] || '東京都';
       const cities = userRequirements.cities || [];
 
+      // ユーザー入力と詳細情報を取得（町丁目AI選択用）
+      const userInput = conditions.originalUserInput || null;
+      const locations = userRequirements.locations || [];
+      const detail = locations.length > 0 ? locations[0].detail : null;
+
       if (prefecture || cities.length > 0) {
-        const locationSelected = await this.selectLocationViaGuide(prefecture, cities);
+        const locationSelected = await this.selectLocationViaGuide(prefecture, cities, userInput, detail);
 
         if (!locationSelected) {
           // 入力ガイドが失敗した場合、従来のテキスト入力にフォールバック
@@ -1664,15 +1943,24 @@ ${JSON.stringify(context, null, 2)}
       }
 
       // ========== 設備条件選択 ==========
-      if (keywords && keywords.length > 0) {
+      // 元のユーザー入力を取得（AI設備選択用）
+      const originalUserInput = conditions.originalUserInput || null;
+
+      // キーワードがある場合、またはユーザー入力がある場合は設備選択を実行
+      if ((keywords && keywords.length > 0) || originalUserInput) {
         console.log('\n【Phase 4】設備・条件の選択（入力ガイド使用）');
         console.log('─'.repeat(40));
-        console.log('  選択する設備: ' + keywords.join(', '));
+        if (keywords && keywords.length > 0) {
+          console.log('  キーワード: ' + keywords.join(', '));
+        }
+        if (originalUserInput) {
+          console.log('  ユーザー入力: AI分析対象');
+        }
 
         const guideOpened = await this.openEquipmentGuide();
 
         if (guideOpened) {
-          const selected = await this.selectEquipmentFromGuide(keywords);
+          const selected = await this.selectEquipmentFromGuide(keywords || [], originalUserInput);
           if (selected && selected.length > 0) {
             console.log('  ✓ ' + selected.length + '項目の設備を選択しました');
           }
