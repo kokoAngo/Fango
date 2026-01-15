@@ -101,6 +101,9 @@ app.post('/api/search', async (req, res) => {
       session  // 传递现有session，避免重复创建文件夹
     );
 
+    // 调试：输出合并后的PDF路径
+    console.log('[Server] coordination.mergedPdfs:', JSON.stringify(coordination.mergedPdfs, null, 2));
+
     // 将文件路径转换为URL
     const pathToUrl = (filePath) => {
       if (!filePath) return null;
@@ -110,32 +113,55 @@ app.post('/api/search', async (req, res) => {
     };
 
     // 构建前端需要的platforms格式
+    // 优先使用合并后的PDF，如果有多个PDF则显示合并后的
+    const getMergedOrFirstPdf = (downloadedPdfs, mergedPdf) => {
+      // 如果有合并后的PDF，优先使用
+      if (mergedPdf) {
+        return pathToUrl(mergedPdf);
+      }
+      // 否则使用第一个下载的PDF
+      if (downloadedPdfs?.length > 0) {
+        return pathToUrl(downloadedPdfs[0]);
+      }
+      return null;
+    };
+
     const platforms = {
       atbb: {
         success: atbbResult.success,
-        pdfUrl: atbbResult.downloadedPdfs?.length > 0 ? pathToUrl(atbbResult.downloadedPdfs[0]) : null,
+        pdfUrl: getMergedOrFirstPdf(atbbResult.downloadedPdfs, coordination.mergedPdfs?.atbb),
         pdfUrls: atbbResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
+        mergedPdfUrl: coordination.mergedPdfs?.atbb ? pathToUrl(coordination.mergedPdfs.atbb) : null,
         count: atbbResult.downloadedPdfs?.length || 0,
         screenshotUrl: atbbResult.screenshotPath ? pathToUrl(atbbResult.screenshotPath) : null,
         message: atbbResult.message
       },
       itandi: {
         success: itandiResult.success,
-        pdfUrl: itandiResult.downloadedPdfs?.length > 0 ? pathToUrl(itandiResult.downloadedPdfs[0]) : null,
+        pdfUrl: getMergedOrFirstPdf(itandiResult.downloadedPdfs, coordination.mergedPdfs?.itandi),
         pdfUrls: itandiResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
+        mergedPdfUrl: coordination.mergedPdfs?.itandi ? pathToUrl(coordination.mergedPdfs.itandi) : null,
         count: itandiResult.downloadedPdfs?.length || 0,
         screenshotUrl: itandiResult.screenshotPath ? pathToUrl(itandiResult.screenshotPath) : null,
         message: itandiResult.message
       },
       ierabu: {
         success: ierabuResult.success,
-        pdfUrl: ierabuResult.downloadedPdfs?.length > 0 ? pathToUrl(ierabuResult.downloadedPdfs[0]) : null,
+        pdfUrl: getMergedOrFirstPdf(ierabuResult.downloadedPdfs, coordination.mergedPdfs?.ierube_bb),
         pdfUrls: ierabuResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
+        mergedPdfUrl: coordination.mergedPdfs?.ierube_bb ? pathToUrl(coordination.mergedPdfs.ierube_bb) : null,
         count: ierabuResult.downloadedPdfs?.length || 0,
         screenshotUrl: ierabuResult.screenshotPath ? pathToUrl(ierabuResult.screenshotPath) : null,
         message: ierabuResult.message
       }
     };
+
+    // 调试：输出发送给前端的platforms对象
+    console.log('[Server] platforms to send:', JSON.stringify({
+      itandi: { mergedPdfUrl: platforms.itandi.mergedPdfUrl, pdfUrl: platforms.itandi.pdfUrl, count: platforms.itandi.count },
+      atbb: { mergedPdfUrl: platforms.atbb.mergedPdfUrl, pdfUrl: platforms.atbb.pdfUrl, count: platforms.atbb.count },
+      ierabu: { mergedPdfUrl: platforms.ierabu.mergedPdfUrl, pdfUrl: platforms.ierabu.pdfUrl, count: platforms.ierabu.count }
+    }, null, 2));
 
     res.json({
       success: true,

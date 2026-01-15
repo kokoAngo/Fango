@@ -1,6 +1,6 @@
 const fs = require('fs').promises;
 const path = require('path');
-const PDFDocument = require('pdfkit');
+const { PDFDocument } = require('pdf-lib');
 
 class SearchCoordinator {
     constructor() {
@@ -71,7 +71,7 @@ class SearchCoordinator {
         return filepath;
     }
 
-    // 合并PDF文件
+    // 合并PDF文件 - 使用pdf-lib真正合并多个PDF
     async mergePDFs(platform, sessionFolders) {
         const platformFolder = sessionFolders[platform.toLowerCase()];
         if (!platformFolder) {
@@ -89,32 +89,52 @@ class SearchCoordinator {
             return null;
         }
 
+        // 如果只有一个PDF，直接返回该文件路径
+        if (pdfFiles.length === 1) {
+            const singlePdfPath = path.join(platformFolder, pdfFiles[0]);
+            console.log(`[Coordinator] ${platform}: 只有一个PDF，无需合并: ${singlePdfPath}`);
+            return singlePdfPath;
+        }
+
         const mergedFilename = `${platform}_merged_${Date.now()}.pdf`;
         const mergedPath = path.join(platformFolder, mergedFilename);
 
-        // 实际的PDF合并逻辑
-        // 这里使用简化实现，实际应使用pdf-lib或类似库
-        const doc = new PDFDocument();
-        const stream = require('fs').createWriteStream(mergedPath);
+        try {
+            // 创建新的PDF文档
+            const mergedPdf = await PDFDocument.create();
 
-        doc.pipe(stream);
-        doc.fontSize(16).text(`${platform} 検索結果`, 100, 100);
-        doc.fontSize(12).text(`合併ファイル数: ${pdfFiles.length}`, 100, 150);
+            // 逐个读取并合并PDF文件
+            for (const pdfFile of pdfFiles) {
+                const pdfPath = path.join(platformFolder, pdfFile);
+                console.log(`[Coordinator] 读取PDF: ${pdfFile}`);
 
-        pdfFiles.forEach((file, index) => {
-            doc.addPage();
-            doc.fontSize(14).text(`物件 ${index + 1}: ${file}`, 100, 100);
-        });
+                try {
+                    const pdfBytes = await fs.readFile(pdfPath);
+                    const sourcePdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
 
-        doc.end();
+                    // 复制所有页面到合并后的PDF
+                    const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+                    pages.forEach(page => mergedPdf.addPage(page));
 
-        return new Promise((resolve, reject) => {
-            stream.on('finish', () => {
-                console.log(`[Coordinator] PDF合并完成: ${mergedPath}`);
-                resolve(mergedPath);
-            });
-            stream.on('error', reject);
-        });
+                    console.log(`[Coordinator] 合并了 ${pages.length} 页从 ${pdfFile}`);
+                } catch (pdfError) {
+                    console.error(`[Coordinator] 读取PDF失败 ${pdfFile}:`, pdfError.message);
+                    // 继续处理其他PDF
+                }
+            }
+
+            // 保存合并后的PDF
+            const mergedPdfBytes = await mergedPdf.save();
+            await fs.writeFile(mergedPath, mergedPdfBytes);
+
+            console.log(`[Coordinator] PDF合并完成: ${mergedPath} (共${mergedPdf.getPageCount()}页)`);
+            return mergedPath;
+
+        } catch (error) {
+            console.error(`[Coordinator] PDF合并失败:`, error.message);
+            // 如果合并失败，返回第一个PDF
+            return path.join(platformFolder, pdfFiles[0]);
+        }
     }
 
     // 完整搜索流程协调

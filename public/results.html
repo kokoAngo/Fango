@@ -533,9 +533,14 @@
                 ierabu: 'ierabu'
             };
 
-            // 支持多个PDF
-            const pdfUrls = data.pdfUrls || (data.pdfUrl ? [data.pdfUrl] : []);
-            const pdfCount = pdfUrls.length || data.count || 0;
+            // 只使用合并后的PDF - mergedPdfUrl优先，然后是pdfUrl
+            // 不再显示单独的PDF列表，只显示一个合并后的PDF
+            const displayPdfUrl = data.mergedPdfUrl || data.pdfUrl;
+            const pdfCount = data.count || 0;
+
+            console.log(`[${platform}] mergedPdfUrl:`, data.mergedPdfUrl);
+            console.log(`[${platform}] pdfUrl:`, data.pdfUrl);
+            console.log(`[${platform}] displayPdfUrl:`, displayPdfUrl);
 
             let html = `
                 <div class="pdf-container">
@@ -548,53 +553,22 @@
                     </div>
             `;
 
-            // 截图不在前端显示，仅用于后端分析
-
-            // 显示PDF列表
-            if (pdfUrls.length > 0) {
-                if (pdfUrls.length === 1) {
-                    // 单个PDF - 使用iframe显示
-                    html += `
-                        <iframe class="pdf-viewer" src="${pdfUrls[0]}" frameborder="0"></iframe>
-                        <div class="pdf-actions">
-                            <a href="${pdfUrls[0]}" class="pdf-download-btn" download="${platform}_property.pdf">
-                                📥 PDFをダウンロード
-                            </a>
-                        </div>
-                    `;
-                } else {
-                    // 多个PDF - 显示列表
-                    html += `
-                        <div style="margin-top: 15px;">
-                            <h4 style="color: #667eea; margin-bottom: 15px;">📄 PDF一覧 (${pdfUrls.length}件)</h4>
-                            <div style="display: grid; gap: 10px;">
-                    `;
-                    pdfUrls.forEach((url, index) => {
-                        const filename = url.split('/').pop();
-                        html += `
-                            <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: white; border-radius: 10px; border: 1px solid #ddd;">
-                                <span style="font-weight: bold; color: #667eea;">${index + 1}</span>
-                                <span style="flex: 1; font-size: 0.9em; color: #666;">${filename}</span>
-                                <a href="${url}" target="_blank" class="pdf-download-btn" style="padding: 8px 15px; font-size: 0.85em;">
-                                    👁 表示
-                                </a>
-                                <a href="${url}" download class="pdf-download-btn" style="padding: 8px 15px; font-size: 0.85em; background: #28a745;">
-                                    📥 DL
-                                </a>
-                            </div>
-                        `;
-                    });
-                    html += `
-                            </div>
-                        </div>
-                    `;
-                }
+            // 只显示一个合并后的PDF
+            if (displayPdfUrl) {
+                html += `
+                    <iframe class="pdf-viewer" src="${displayPdfUrl}" frameborder="0"></iframe>
+                    <div class="pdf-actions">
+                        <a href="${displayPdfUrl}" class="pdf-download-btn" download="${platformNames[platform]}_物件一覧.pdf">
+                            📥 PDFをダウンロード (${pdfCount}件の物件)
+                        </a>
+                    </div>
+                `;
             } else {
                 html += `
                     <div class="no-results-panel" style="margin-top: 15px;">
                         <div class="icon">📄</div>
                         <h3>PDFファイルがありません</h3>
-                        <p>スクリーンショットのみ保存されました</p>
+                        <p>該当する物件が見つかりませんでした</p>
                     </div>
                 `;
             }
@@ -654,16 +628,18 @@
 
             loadingEl.style.display = 'none';
 
-            // 有PDF或截图都显示内容
-            const hasPdf = data && (data.pdfUrl || (data.pdfUrls && data.pdfUrls.length > 0));
-            const hasScreenshot = data && data.screenshotUrl;
-            const hasContent = hasPdf || hasScreenshot;
+            // 检查是否有合并后的PDF或单个PDF
+            const displayPdfUrl = data && (data.mergedPdfUrl || data.pdfUrl);
+            const pdfCount = data?.count || 0;
 
-            if (hasContent) {
+            console.log(`[loadPlatformResults ${platform}] data:`, data);
+            console.log(`[loadPlatformResults ${platform}] displayPdfUrl:`, displayPdfUrl);
+            console.log(`[loadPlatformResults ${platform}] pdfCount:`, pdfCount);
+
+            if (displayPdfUrl || pdfCount > 0) {
                 contentEl.innerHTML = createPdfDisplay(platform, data);
                 contentEl.style.display = 'block';
-                const count = data.pdfUrls?.length || data.count || (data.pdfUrl ? 1 : 0);
-                updateTabStatus(platform, count);
+                updateTabStatus(platform, pdfCount);
             } else {
                 noResultsEl.style.display = 'block';
                 updateTabStatus(platform, 0);
@@ -707,17 +683,20 @@
                 switchTab('atbb');
             } else if (data.platforms) {
                 // New multi-platform format
+                console.log('[loadResults] platforms data:', data.platforms);
+
                 ['itandi', 'atbb', 'ierabu'].forEach(platform => {
                     const platformData = data.platforms[platform];
+                    console.log(`[loadResults ${platform}] platformData:`, platformData);
                     loadPlatformResults(platform, platformData);
 
                     const count = platformData?.count || 0;
                     document.getElementById(platform + 'Count').textContent = count + '件';
                 });
 
-                // Switch to first tab with results
+                // Switch to first tab with results (check mergedPdfUrl first, then pdfUrl)
                 const firstWithResults = ['itandi', 'atbb', 'ierabu'].find(p =>
-                    data.platforms[p]?.pdfUrl
+                    data.platforms[p]?.mergedPdfUrl || data.platforms[p]?.pdfUrl
                 );
                 if (firstWithResults) {
                     switchTab(firstWithResults);
