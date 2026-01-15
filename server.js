@@ -132,7 +132,7 @@ app.post('/api/search', async (req, res) => {
         pdfUrl: getMergedOrFirstPdf(atbbResult.downloadedPdfs, coordination.mergedPdfs?.atbb),
         pdfUrls: atbbResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
         mergedPdfUrl: coordination.mergedPdfs?.atbb ? pathToUrl(coordination.mergedPdfs.atbb) : null,
-        count: atbbResult.downloadedPdfs?.length || 0,
+        count: atbbResult.screenshotCount || atbbResult.downloadedPdfs?.length || 0,  // 使用截图数量作为物件数
         screenshotUrl: atbbResult.screenshotPath ? pathToUrl(atbbResult.screenshotPath) : null,
         message: atbbResult.message
       },

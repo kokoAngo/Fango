@@ -1333,11 +1333,16 @@ JSON形式で回答してください：
         if (screenshotPaths.length > 0) {
             const mergedPdfPath = await this.mergeScreenshotsToPdf(screenshotPaths);
             console.log('[ATBB] PDF合并完成:', mergedPdfPath);
-            return [mergedPdfPath];
+            console.log('[ATBB] 截图数量:', screenshotPaths.length);
+            // 返回包含合并PDF路径和截图数量的对象
+            return {
+                pdfs: [mergedPdfPath],
+                screenshotCount: screenshotPaths.length
+            };
         }
 
         console.log('[ATBB] 没有截图需要合并');
-        return [];
+        return { pdfs: [], screenshotCount: 0 };
     }
 
     // 合并截图为PDF
@@ -1409,8 +1414,11 @@ JSON形式で回答してください：
 
             // 7. 下载PDF - インフォシート → PDF出力
             let downloadedPdfs = [];
+            let screenshotCount = 0;
             if (this.downloadDir) {
-                downloadedPdfs = await this.downloadPDF();
+                const pdfResult = await this.downloadPDF();
+                downloadedPdfs = pdfResult.pdfs || [];
+                screenshotCount = pdfResult.screenshotCount || 0;
             }
 
             // 結果を返す
@@ -1422,7 +1430,8 @@ JSON形式で回答してください：
                 searchPageUrl: this.searchPage?.url(),
                 message: '検索完了',
                 screenshotPath,
-                downloadedPdfs
+                downloadedPdfs,
+                screenshotCount  // 截图数量（物件数）
             };
 
         } catch (error) {
