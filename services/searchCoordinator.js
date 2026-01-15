@@ -71,26 +71,35 @@ class SearchCoordinator {
         return filepath;
     }
 
-    // 合并PDF文件 - 使用pdf-lib真正合并多个PDF
+    // 合并PDF和图片文件为一个PDF
     async mergePDFs(platform, sessionFolders) {
         const platformFolder = sessionFolders[platform.toLowerCase()];
         if (!platformFolder) {
             throw new Error(`Unknown platform: ${platform}`);
         }
 
-        console.log(`[Coordinator] 合并PDF: ${platform}`);
+        console.log(`[Coordinator] 合并文件: ${platform}`);
 
-        // 读取文件夹中的所有PDF文件
+        // 读取文件夹中的所有PDF和图片文件
         const files = await fs.readdir(platformFolder);
         const pdfFiles = files.filter(f => f.endsWith('.pdf') && !f.includes('merged'));
+        const imageFiles = files.filter(f =>
+            f.toLowerCase().endsWith('.png') ||
+            f.toLowerCase().endsWith('.jpg') ||
+            f.toLowerCase().endsWith('.jpeg')
+        );
 
-        if (pdfFiles.length === 0) {
-            console.log(`[Coordinator] ${platform}: 没有PDF文件需要合并`);
+        const totalFiles = pdfFiles.length + imageFiles.length;
+
+        if (totalFiles === 0) {
+            console.log(`[Coordinator] ${platform}: 没有文件需要合并`);
             return null;
         }
 
-        // 如果只有一个PDF，直接返回该文件路径
-        if (pdfFiles.length === 1) {
+        console.log(`[Coordinator] ${platform}: 找到 ${pdfFiles.length} 个PDF, ${imageFiles.length} 个图片`);
+
+        // 如果只有一个PDF且没有图片，直接返回该文件路径
+        if (pdfFiles.length === 1 && imageFiles.length === 0) {
             const singlePdfPath = path.join(platformFolder, pdfFiles[0]);
             console.log(`[Coordinator] ${platform}: 只有一个PDF，无需合并: ${singlePdfPath}`);
             return singlePdfPath;
@@ -103,7 +112,7 @@ class SearchCoordinator {
             // 创建新的PDF文档
             const mergedPdf = await PDFDocument.create();
 
-            // 逐个读取并合并PDF文件
+            // 先处理PDF文件
             for (const pdfFile of pdfFiles) {
                 const pdfPath = path.join(platformFolder, pdfFile);
                 console.log(`[Coordinator] 读取PDF: ${pdfFile}`);
@@ -119,7 +128,37 @@ class SearchCoordinator {
                     console.log(`[Coordinator] 合并了 ${pages.length} 页从 ${pdfFile}`);
                 } catch (pdfError) {
                     console.error(`[Coordinator] 读取PDF失败 ${pdfFile}:`, pdfError.message);
-                    // 继续处理其他PDF
+                }
+            }
+
+            // 再处理图片文件
+            for (const imageFile of imageFiles) {
+                const imagePath = path.join(platformFolder, imageFile);
+                console.log(`[Coordinator] 读取图片: ${imageFile}`);
+
+                try {
+                    const imageBytes = await fs.readFile(imagePath);
+                    let image;
+
+                    // 根据文件类型嵌入图片
+                    if (imageFile.toLowerCase().endsWith('.png')) {
+                        image = await mergedPdf.embedPng(imageBytes);
+                    } else {
+                        image = await mergedPdf.embedJpg(imageBytes);
+                    }
+
+                    // 创建与图片大小匹配的页面
+                    const page = mergedPdf.addPage([image.width, image.height]);
+                    page.drawImage(image, {
+                        x: 0,
+                        y: 0,
+                        width: image.width,
+                        height: image.height
+                    });
+
+                    console.log(`[Coordinator] 添加图片页面: ${imageFile} (${image.width}x${image.height})`);
+                } catch (imageError) {
+                    console.error(`[Coordinator] 读取图片失败 ${imageFile}:`, imageError.message);
                 }
             }
 
@@ -127,13 +166,16 @@ class SearchCoordinator {
             const mergedPdfBytes = await mergedPdf.save();
             await fs.writeFile(mergedPath, mergedPdfBytes);
 
-            console.log(`[Coordinator] PDF合并完成: ${mergedPath} (共${mergedPdf.getPageCount()}页)`);
+            console.log(`[Coordinator] 文件合并完成: ${mergedPath} (共${mergedPdf.getPageCount()}页)`);
             return mergedPath;
 
         } catch (error) {
-            console.error(`[Coordinator] PDF合并失败:`, error.message);
-            // 如果合并失败，返回第一个PDF
-            return path.join(platformFolder, pdfFiles[0]);
+            console.error(`[Coordinator] 文件合并失败:`, error.message);
+            // 如果合并失败，返回第一个PDF（如果有的话）
+            if (pdfFiles.length > 0) {
+                return path.join(platformFolder, pdfFiles[0]);
+            }
+            return null;
         }
     }
 

@@ -751,19 +751,28 @@ JSON形式で回答してください：
         return downloadedPdfs;
     }
 
-    // 等待PDF下载完成
+    // 等待PDF或图片下载完成
     async waitForPdfDownload(existingFiles, timeout = 15000) {
         const startTime = Date.now();
         while (Date.now() - startTime < timeout) {
             try {
                 const currentFiles = await fs.readdir(this.downloadDir);
-                const pdfFiles = currentFiles.filter(f => f.endsWith('.pdf'));
+                // 支持PDF和图片格式
+                const downloadedFiles = currentFiles.filter(f =>
+                    f.endsWith('.pdf') ||
+                    f.endsWith('.png') ||
+                    f.endsWith('.jpg') ||
+                    f.endsWith('.jpeg') ||
+                    f.endsWith('.PNG') ||
+                    f.endsWith('.JPG') ||
+                    f.endsWith('.JPEG')
+                );
                 const tempFiles = currentFiles.filter(f => f.endsWith('.crdownload') || f.endsWith('.tmp'));
-                const newPdfs = pdfFiles.filter(f => !existingFiles.includes(f));
+                const newFiles = downloadedFiles.filter(f => !existingFiles.includes(f));
 
-                if (newPdfs.length > 0 && tempFiles.length === 0) {
-                    console.log('[いえらぶBB] 下载完成，新PDF文件:', newPdfs);
-                    return newPdfs;
+                if (newFiles.length > 0 && tempFiles.length === 0) {
+                    console.log('[いえらぶBB] 下载完成，新文件:', newFiles);
+                    return newFiles;
                 }
 
                 if (tempFiles.length > 0) {
