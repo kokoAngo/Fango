@@ -265,29 +265,14 @@ JSON形式で回答してください：
         const page = this.page;
         console.log('[ITANDI] フォームに入力中...');
 
-        // 賃料入力
-        if (searchParams.rentMax) {
-            console.log('[ITANDI] 賃料上限設定:', searchParams.rentMax);
-            await page.evaluate((value) => {
-                // 賃料の入力欄を探す（万円単位）
-                const inputs = document.querySelectorAll('input');
-                for (const input of inputs) {
-                    const placeholder = input.placeholder || '';
-                    const name = input.name || '';
-                    // 賃料上限の入力欄
-                    if (name.includes('rent') && name.includes('lteq')) {
-                        input.value = Math.floor(value / 10000); // 万円単位
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
-                        return true;
-                    }
-                }
-                return false;
-            }, searchParams.rentMax);
-            await wait(300);
+        // 1. 先选择所在地（会打开modal，可能导致其他输入被重置）
+        if (searchParams.prefecture || searchParams.city) {
+            await this.selectLocation(searchParams.prefecture, searchParams.city, userRequirements);
         }
 
-        // 間取り選択
+        await wait(500);
+
+        // 2. 間取り選択
         if (searchParams.layouts && searchParams.layouts.length > 0) {
             console.log('[ITANDI] 間取り設定:', searchParams.layouts);
             for (const layout of searchParams.layouts) {
@@ -301,7 +286,7 @@ JSON形式で回答してください：
             }
         }
 
-        // 建物種類選択
+        // 3. 建物種類選択
         if (searchParams.buildingTypes && searchParams.buildingTypes.length > 0) {
             console.log('[ITANDI] 建物種類設定:', searchParams.buildingTypes);
             for (const type of searchParams.buildingTypes) {
@@ -315,12 +300,54 @@ JSON形式で回答してください：
             }
         }
 
-        // 所在地選択（AI選択対応）
-        if (searchParams.prefecture || searchParams.city) {
-            await this.selectLocation(searchParams.prefecture, searchParams.city, userRequirements);
+        // 4. 賃料入力（最後に設定して消えないようにする）
+        if (searchParams.rentMax) {
+            const valueInMan = Math.floor(searchParams.rentMax / 10000); // 万円単位
+            console.log('[ITANDI] 賃料上限設定:', searchParams.rentMax, '→', valueInMan, '万円');
+
+            // 使用Puppeteer的方式找到并输入价格（更可靠地触发React状态更新）
+            const rentInput = await page.$('input[name*="rent"][name*="lteq"]');
+            if (rentInput) {
+                // 清空现有值
+                await rentInput.click({ clickCount: 3 }); // 全选
+                await page.keyboard.press('Backspace');
+                await wait(100);
+
+                // 输入新值
+                await rentInput.type(String(valueInMan), { delay: 50 });
+                await wait(100);
+
+                // 触发blur事件确保React更新
+                await rentInput.evaluate(el => {
+                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                });
+
+                console.log('[ITANDI] 賃料入力完了:', valueInMan, '万円');
+            } else {
+                console.log('[ITANDI] 賃料入力欄が見つかりません');
+                // 尝试备用方式：使用evaluate查找
+                const rentResult = await page.evaluate((value) => {
+                    const inputs = document.querySelectorAll('input');
+                    for (const input of inputs) {
+                        const name = input.name || '';
+                        if (name.includes('rent') && name.includes('lteq')) {
+                            // 使用React兼容的方式设置值
+                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            nativeInputValueSetter.call(input, value);
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                            input.dispatchEvent(new Event('blur', { bubbles: true }));
+                            return { success: true, value, name };
+                        }
+                    }
+                    return { success: false };
+                }, valueInMan);
+                console.log('[ITANDI] 賃料入力結果(備用):', JSON.stringify(rentResult));
+            }
+            await wait(300);
         }
 
-        await wait(1000);
+        await wait(500);
         console.log('[ITANDI] フォーム入力完了');
         return true;
     }
