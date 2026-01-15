@@ -363,7 +363,25 @@ JSON形式で回答してください：
 
         console.log('[いえらぶBB] 選択した都道府県:', selectedPref.label);
 
-        // 3. 点击都道府県复选框
+        // 3. 先取消所有已选中的都道府県（関東選択時に自動で複数選択されるため）
+        const uncheckedCount = await page.evaluate((selectedId) => {
+            const checkboxes = document.querySelectorAll('input[name="todofuken[]"]');
+            let count = 0;
+            checkboxes.forEach(cb => {
+                if (cb.checked && cb.id !== selectedId) {
+                    cb.click();
+                    count++;
+                }
+            });
+            return count;
+        }, selectedPref.id);
+
+        if (uncheckedCount > 0) {
+            console.log(`[いえらぶBB] 他の都道府県を ${uncheckedCount} 件解除しました`);
+            await wait(500);
+        }
+
+        // 4. 选中目标都道府県
         await page.evaluate((id) => {
             const checkbox = document.getElementById(id);
             if (checkbox && !checkbox.checked) {
