@@ -18,18 +18,17 @@
         .form-section .required { color: #e74c3c; }
         .form-section .optional { color: #888; font-weight: normal; font-size: 0.9em; }
 
-        .mbti-select {
+        .text-input {
             width: 100%;
             padding: 15px;
-            font-size: 1.1em;
+            font-size: 1em;
             border: 2px solid #e0e0e0;
             border-radius: 10px;
             background: white;
-            cursor: pointer;
             transition: all 0.3s ease;
         }
-        .mbti-select:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2); }
-        .mbti-select:hover { border-color: #667eea; }
+        .text-input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2); }
+        .text-input::placeholder { color: #aaa; }
 
         .user-input {
             width: 100%;
@@ -102,12 +101,14 @@
             </div>
 
             <div class="form-section">
-                <label for="mbtiSelect">
-                    住まいMBTIタイプ <span class="optional">（任意）</span>
+                <label for="tantousha">
+                    担当者希望条件 <span class="optional">（任意）</span>
                 </label>
-                <select class="mbti-select" id="mbtiSelect">
-                    <option value="">-- 選択しない --</option>
-                </select>
+                <textarea class="user-input" id="tantousha" placeholder="例：
+・駅近優先
+・築浅希望
+・1階以外
+・日当たり重視"></textarea>
             </div>
 
             <button class="search-button" id="searchButton" disabled>物件を検索する</button>
@@ -120,28 +121,6 @@
     </div>
 
     <script>
-        let mbtiTypes = [];
-
-        async function loadMBTITypes() {
-            try {
-                const response = await fetch('/api/mbti-types');
-                mbtiTypes = await response.json();
-                renderMBTISelect();
-            } catch (error) {
-                console.error('Failed to load MBTI types');
-            }
-        }
-
-        function renderMBTISelect() {
-            const select = document.getElementById('mbtiSelect');
-            mbtiTypes.forEach(type => {
-                const option = document.createElement('option');
-                option.value = type.type_id;
-                option.textContent = type.display_name_ja + ' (' + type.type_id + ')';
-                select.appendChild(option);
-            });
-        }
-
         // 检查用户输入是否有内容
         function updateSearchButton() {
             const userInput = document.getElementById('userRequirements').value.trim();
@@ -152,6 +131,7 @@
 
         document.getElementById('searchButton').addEventListener('click', async () => {
             const userRequirements = document.getElementById('userRequirements').value.trim();
+            const tantousha = document.getElementById('tantousha').value.trim();
 
             if (!userRequirements) {
                 showError('希望条件を入力してください');
@@ -162,14 +142,12 @@
             showLoading();
 
             try {
-                const typeId = document.getElementById('mbtiSelect').value || null;
-
                 const response = await fetch('/api/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        typeId: typeId,
-                        userRequirements: userRequirements
+                        userRequirements: userRequirements,
+                        tantousha: tantousha || null
                     })
                 });
 
@@ -180,6 +158,9 @@
 
                 localStorage.setItem('searchResults', JSON.stringify(data));
                 localStorage.setItem('userRequirements', userRequirements);
+                if (tantousha) {
+                    localStorage.setItem('tantousha', tantousha);
+                }
                 window.location.href = '/results.html';
             } catch (error) {
                 showError(error.message);
@@ -206,8 +187,6 @@
         function hideError() {
             document.getElementById('error').classList.remove('active');
         }
-
-        loadMBTITypes();
     </script>
 </body>
 </html>

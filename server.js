@@ -1,23 +1,25 @@
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config();
 
+const atbbService = require('./services/atbbService');
+const itandiService = require('./services/itandiService');
+const ierabuService = require('./services/ierabuService');
+const searchCoordinator = require('./services/searchCoordinator');
 const reinsService = require('./services/reinsService');
 const requirementsParser = require('./services/requirementsParser');
-const aiRequirementsParser = require('./services/aiRequirementsParser');
 const mbtiData = require('./housing_mbti_presets.json');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
 
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
-app.use('/downloads', express.static(DOWNLOADS_DIR));
+app.use('/downloads', express.static('downloads')); // 暴露下载文件夹供前端访问PDF
 
 // Routes
 app.get('/', (req, res) => {
@@ -34,12 +36,10 @@ app.get('/api/mbti-types', (req, res) => {
   res.json(types);
 });
 
-// Search properties based on user requirements (primary) and optional MBTI type
+// Multi-platform search - searches across ATBB, ITANDI, and いえらぶBB
 app.post('/api/search', async (req, res) => {
   try {
-    const { typeId, userRequirements } = req.body;
-    const username = process.env.REINS_USERNAME;
-    const password = process.env.REINS_PASSWORD;
+    const { userRequirements, tantousha } = req.body;
 
     // 用户输入是必须的
     if (!userRequirements || !userRequirements.trim()) {
@@ -48,263 +48,115 @@ app.post('/api/search', async (req, res) => {
       });
     }
 
-    if (!username || !password) {
-      return res.status(500).json({
-        error: 'Server credentials not configured'
-      });
-    }
-
     console.log('='.repeat(60));
-    console.log('User requirements:', userRequirements);
+    console.log('[マルチプラットフォーム検索開始]');
+    console.log('ユーザー希望条件:', userRequirements);
+    console.log('担当者希望条件:', tantousha || '(なし)');
+    console.log('='.repeat(60));
 
-    // 新しい検索セッション開始時に町丁目選択履歴をクリア
-    reinsService.clearChoHistory();
+    // 先创建文件夹结构，获取各平台下载目录
+    console.log('[Coordinator] 创建搜索会话文件夹...');
+    const session = await searchCoordinator.createSearchSession(userRequirements);
+    console.log('[Coordinator] 会话文件夹已创建:', session.sessionPath);
 
-    // AI で需求を解析（位置情報も含めて一括解析）
-    let parsedRequirements = await aiRequirementsParser.parse(userRequirements);
-    let reinsFields;
+    // 并行搜索三个平台，传递下载目录
+    const searchPromises = [
+      atbbService.search(userRequirements, tantousha, session.folders.atbb).catch(err => ({
+        success: false,
+        platform: 'ATBB',
+        error: err.message
+      })),
+      itandiService.search(userRequirements, tantousha, session.folders.itandi).catch(err => ({
+        success: false,
+        platform: 'ITANDI',
+        error: err.message
+      })),
+      ierabuService.search(userRequirements, tantousha, session.folders.ierube_bb).catch(err => ({
+        success: false,
+        platform: 'いえらぶBB',
+        error: err.message
+      }))
+    ];
 
-    if (parsedRequirements) {
-      // AI 解析成功
-      console.log('\n[AI Parser] 解析成功');
-      reinsFields = aiRequirementsParser.toReinsFields(parsedRequirements);
-    } else {
-      // AI 解析失敗時は従来のパーサーにフォールバック
-      console.log('\n[AI Parser] 解析失敗、従来パーサーにフォールバック');
-      parsedRequirements = requirementsParser.parse(userRequirements);
-      reinsFields = requirementsParser.toReinsFields(parsedRequirements);
-    }
+    console.log('[検索] 3つのプラットフォームで並列検索中...');
+    const [atbbResult, itandiResult, ierabuResult] = await Promise.all(searchPromises);
 
-    // 複数位置オプションをログ出力
-    const locations = parsedRequirements.locations || [];
-    console.log('\n=== 解析結果 ===');
-    console.log('【位置情報】候補地:', locations.length, '件');
-    locations.forEach((loc, i) => {
-      console.log(`  [${i + 1}] ${loc.prefecture} ${loc.city}${loc.detail ? ' (' + loc.detail + ')' : ''}`);
-    });
-    console.log('【沿線・駅】');
-    console.log('  沿線:', parsedRequirements.line || '(未指定)');
-    console.log('  駅:', parsedRequirements.station || '(未指定)');
-    console.log('【賃料・面積】');
-    console.log('  賃料:',
-      (parsedRequirements.rentMin ? parsedRequirements.rentMin + '万円' : '') +
-      (parsedRequirements.rentMin && parsedRequirements.rentMax ? ' ～ ' : '') +
-      (parsedRequirements.rentMax ? parsedRequirements.rentMax + '万円' : '') || '(未指定)');
-    console.log('  面積下限:', parsedRequirements.areaMin ? parsedRequirements.areaMin + '㎡' : '(未指定)');
-    console.log('【その他条件】');
-    console.log('  所在階:', parsedRequirements.floorMin ? parsedRequirements.floorMin + '階以上' : '(未指定)');
-    console.log('  向き:', parsedRequirements.direction || '(未指定)');
-    console.log('  間取り:', parsedRequirements.layouts?.join(', ') || '(未指定)');
-    console.log('  駐車場:', parsedRequirements.parking === '1' ? '有／空有' :
-                            parsedRequirements.parking === '2' ? '無／空無' :
-                            parsedRequirements.parking === '3' ? '近隣確保' : '(未指定)');
-    console.log('  ペット可:', parsedRequirements.petAllowed ? 'はい' : 'いいえ');
-    console.log('  設備条件:', parsedRequirements.keywords?.join(', ') || '(なし)');
+    console.log('[検索完了]');
+    console.log('- ATBB:', atbbResult.success ? '成功' : '失敗', 'PDFs:', atbbResult.downloadedPdfs?.length || 0);
+    console.log('- ITANDI:', itandiResult.success ? '成功' : '失敗', 'PDFs:', itandiResult.downloadedPdfs?.length || 0);
+    console.log('- いえらぶBB:', ierabuResult.success ? '成功' : '失敗', 'PDFs:', ierabuResult.downloadedPdfs?.length || 0);
 
-    // 如果选择了MBTI类型，获取其基础条件（作为补充）
-    let mbtiConditions = {};
-    let mbtiName = null;
-    if (typeId) {
-      const type = mbtiData.types.find(t => t.type_id === typeId);
-      if (type) {
-        mbtiConditions = type.basic_conditions || {};
-        mbtiName = type.display_name_ja;
-        console.log('MBTI type:', mbtiName);
+    // 协调搜索结果，创建文件夹结构和合并PDF
+    const searchResults = {
+      atbb: atbbResult,
+      itandi: itandiResult,
+      ierube_bb: ierabuResult
+    };
+
+    console.log('[Coordinator] 合并PDF文件...');
+    const coordination = await searchCoordinator.coordinateSearch(
+      userRequirements,
+      tantousha,
+      searchResults,
+      session  // 传递现有session，避免重复创建文件夹
+    );
+
+    // 将文件路径转换为URL
+    const pathToUrl = (filePath) => {
+      if (!filePath) return null;
+      // 从downloads文件夹开始的相对路径
+      const relativePath = filePath.replace(/\\/g, '/').split('/downloads/')[1];
+      return relativePath ? `/downloads/${relativePath}` : null;
+    };
+
+    // 构建前端需要的platforms格式
+    const platforms = {
+      atbb: {
+        success: atbbResult.success,
+        pdfUrl: atbbResult.downloadedPdfs?.length > 0 ? pathToUrl(atbbResult.downloadedPdfs[0]) : null,
+        pdfUrls: atbbResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
+        count: atbbResult.downloadedPdfs?.length || 0,
+        screenshotUrl: atbbResult.screenshotPath ? pathToUrl(atbbResult.screenshotPath) : null,
+        message: atbbResult.message
+      },
+      itandi: {
+        success: itandiResult.success,
+        pdfUrl: itandiResult.downloadedPdfs?.length > 0 ? pathToUrl(itandiResult.downloadedPdfs[0]) : null,
+        pdfUrls: itandiResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
+        count: itandiResult.downloadedPdfs?.length || 0,
+        screenshotUrl: itandiResult.screenshotPath ? pathToUrl(itandiResult.screenshotPath) : null,
+        message: itandiResult.message
+      },
+      ierabu: {
+        success: ierabuResult.success,
+        pdfUrl: ierabuResult.downloadedPdfs?.length > 0 ? pathToUrl(ierabuResult.downloadedPdfs[0]) : null,
+        pdfUrls: ierabuResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
+        count: ierabuResult.downloadedPdfs?.length || 0,
+        screenshotUrl: ierabuResult.screenshotPath ? pathToUrl(ierabuResult.screenshotPath) : null,
+        message: ierabuResult.message
       }
-    }
-
-    // 複数位置で順次検索（5件以上見つかるまで、最大10回まで）
-    const MIN_PROPERTIES = 5;
-    const MAX_SEARCH_ATTEMPTS = 10;
-    let allProperties = [];
-    let searchedLocations = [];
-    let allPdfPaths = [];  // 複数PDFを収集
-    let allPropertyIds = [];  // 物件IDを収集
-    let totalPdfCount = 0;
-    let searchAttempts = 0;
-
-    // 検索専用フォルダを作成（時間+キーワード）
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    // キーワードを生成（最初の位置または条件から）
-    const keyword = locations.length > 0
-      ? `${locations[0].prefecture}_${locations[0].city}`.replace(/[\\/:*?"<>|]/g, '_')
-      : (parsedRequirements.station || parsedRequirements.line || 'search').replace(/[\\/:*?"<>|]/g, '_');
-    const searchFolderName = `${timestamp}_${keyword}`;
-    const searchDownloadDir = path.join(DOWNLOADS_DIR, searchFolderName);
-
-    // フォルダ作成
-    if (!fs.existsSync(DOWNLOADS_DIR)) {
-      fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
-    }
-    fs.mkdirSync(searchDownloadDir, { recursive: true });
-    console.log(`検索専用フォルダを作成: ${searchFolderName}`);
-
-    for (let i = 0; i < locations.length && allProperties.length < MIN_PROPERTIES && searchAttempts < MAX_SEARCH_ATTEMPTS; i++) {
-      searchAttempts++;
-      const location = locations[i];
-      console.log(`\n【検索 ${searchAttempts}/${MAX_SEARCH_ATTEMPTS}】${location.prefecture} ${location.city}`);
-
-      // この位置用の条件を作成
-      const locationRequirements = {
-        ...parsedRequirements,
-        prefecture: location.prefecture,
-        cities: [location.city]
-      };
-
-      const locationReinsFields = aiRequirementsParser.toReinsFields(locationRequirements);
-
-      const searchConditions = {
-        ...mbtiConditions,
-        userRequirements: locationRequirements,
-        reinsFields: locationReinsFields,
-        downloadDir: searchDownloadDir,  // 検索専用フォルダを指定
-        originalUserInput: userRequirements  // 町丁目AI選択用
-      };
-
-      try {
-        const result = await reinsService.searchProperties(
-          username,
-          password,
-          searchConditions
-        );
-
-        // 結果タイプを確認
-        if (result && result.type === 'pdf') {
-          // PDFダウンロード成功 - 収集して続行
-          console.log(`  → PDF生成成功: ${path.basename(result.pdfPath)}`);
-          allPdfPaths.push(result.pdfPath);
-          totalPdfCount += result.count || 1;
-          searchedLocations.push(location);
-
-          // 物件IDを収集
-          if (result.propertyIds && result.propertyIds.length > 0) {
-            allPropertyIds.push(...result.propertyIds);
-            console.log(`  → 物件ID: ${result.propertyIds.length}件収集`);
-          }
-
-          // 5件以上収集したら終了
-          if (totalPdfCount >= MIN_PROPERTIES) {
-            console.log(`\n${totalPdfCount}件以上のPDFを収集したため検索終了`);
-            break;
-          }
-        } else if (result && result.type === 'properties' && result.properties) {
-          // プロパティリスト（フォールバック）
-          const properties = result.properties;
-          if (properties.length > 0) {
-            properties.forEach(p => {
-              p.searchLocation = `${location.prefecture} ${location.city}`;
-            });
-            allProperties.push(...properties);
-            searchedLocations.push(location);
-            console.log(`  → ${properties.length}件 見つかりました (累計: ${allProperties.length}件)`);
-          } else {
-            console.log(`  → 0件`);
-          }
-        } else if (Array.isArray(result)) {
-          // 旧形式（配列）
-          if (result.length > 0) {
-            result.forEach(p => {
-              p.searchLocation = `${location.prefecture} ${location.city}`;
-            });
-            allProperties.push(...result);
-            searchedLocations.push(location);
-            console.log(`  → ${result.length}件 見つかりました (累計: ${allProperties.length}件)`);
-          } else {
-            console.log(`  → 0件`);
-          }
-        } else {
-          console.log(`  → 0件`);
-        }
-      } catch (err) {
-        console.log(`  → 検索エラー: ${err.message}`);
-      }
-
-      // 5件以上見つかったら終了
-      if (allProperties.length >= MIN_PROPERTIES || totalPdfCount >= MIN_PROPERTIES) {
-        console.log(`\n${MIN_PROPERTIES}件以上見つかったため検索終了`);
-        break;
-      }
-    }
-
-    // 収集したPDFを合併して返す
-    if (allPdfPaths.length > 0) {
-      console.log(`\n=== PDF合併処理 ===`);
-      console.log(`収集したPDF: ${allPdfPaths.length}件, 物件数: ${totalPdfCount}件`);
-
-      let finalPdfPath;
-      if (allPdfPaths.length === 1) {
-        finalPdfPath = allPdfPaths[0];
-      } else {
-        // 複数PDFを合併（検索専用フォルダに保存）
-        const mergeTimestamp = Date.now();
-        finalPdfPath = path.join(searchDownloadDir, `merged_${mergeTimestamp}.pdf`);
-        await reinsService.mergePDFs(allPdfPaths, finalPdfPath);
-      }
-
-      const pdfFilename = path.basename(finalPdfPath);
-      console.log(`✓ 最終PDF: ${pdfFilename}`);
-      console.log(`✓ 物件ID: ${allPropertyIds.length}件`);
-      if (allPropertyIds.length > 0) {
-        allPropertyIds.forEach((id, i) => console.log(`  [${i + 1}] ${id}`));
-      }
-
-      return res.json({
-        success: true,
-        type: 'pdf',
-        mbti_type: mbtiName,
-        user_requirements: userRequirements,
-        parsed_requirements: parsedRequirements,
-        searched_locations: searchedLocations,
-        pdfUrl: `/downloads/${searchFolderName}/${pdfFilename}`,
-        count: totalPdfCount,
-        propertyIds: allPropertyIds
-      });
-    }
-
-    // 位置がない場合は従来の検索
-    if (locations.length === 0) {
-      console.log('\n【位置指定なしで検索】');
-      const searchConditions = {
-        ...mbtiConditions,
-        userRequirements: parsedRequirements,
-        reinsFields: reinsFields,
-        downloadDir: searchDownloadDir  // 検索専用フォルダを指定
-      };
-      const result = await reinsService.searchProperties(
-        username,
-        password,
-        searchConditions
-      );
-
-      // 結果タイプを確認
-      if (result && result.type === 'pdf') {
-        const pdfFilename = path.basename(result.pdfPath);
-        return res.json({
-          success: true,
-          type: 'pdf',
-          mbti_type: mbtiName,
-          user_requirements: userRequirements,
-          parsed_requirements: parsedRequirements,
-          pdfUrl: `/downloads/${pdfFilename}`,
-          count: result.count
-        });
-      } else if (result && result.type === 'properties') {
-        allProperties = result.properties || [];
-      } else if (Array.isArray(result)) {
-        allProperties = result;
-      }
-    }
-
-    console.log(`\n=== 検索完了: 合計 ${allProperties.length} 件 ===`);
+    };
 
     res.json({
       success: true,
-      type: 'properties',
-      mbti_type: mbtiName,
       user_requirements: userRequirements,
-      parsed_requirements: parsedRequirements,
-      searched_locations: searchedLocations,
-      properties: allProperties
+      tantousha_requirements: tantousha,
+      platforms: platforms,  // 前端需要的格式
+      results: searchResults,
+      session: {
+        sessionPath: coordination.sessionPath,
+        sessionName: coordination.sessionName,
+        folders: coordination.folders,
+        mergedPdfs: coordination.mergedPdfs
+      },
+      summary: {
+        total_platforms: 3,
+        successful_platforms: [atbbResult, itandiResult, ierabuResult].filter(r => r.success).length,
+        failed_platforms: [atbbResult, itandiResult, ierabuResult].filter(r => !r.success).length,
+        total_pdfs_downloaded: (atbbResult.downloadedPdfs?.length || 0) +
+                              (itandiResult.downloadedPdfs?.length || 0) +
+                              (ierabuResult.downloadedPdfs?.length || 0)
+      }
     });
 
   } catch (error) {
@@ -316,6 +168,83 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
+// Single platform search endpoints (for individual testing)
+app.post('/api/search/atbb', async (req, res) => {
+  try {
+    const { userRequirements, tantousha } = req.body;
+    const result = await atbbService.search(userRequirements, tantousha);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/search/itandi', async (req, res) => {
+  try {
+    const { userRequirements, tantousha } = req.body;
+    const result = await itandiService.search(userRequirements, tantousha);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/search/ierube', async (req, res) => {
+  try {
+    const { userRequirements, tantousha } = req.body;
+    const result = await ierabuService.search(userRequirements, tantousha);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get search history
+app.get('/api/search/history', async (req, res) => {
+  try {
+    const history = await searchCoordinator.getSearchHistory();
+    res.json({
+      success: true,
+      history,
+      count: history.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get platform status
+app.get('/api/platforms/status', (req, res) => {
+  res.json({
+    success: true,
+    platforms: [
+      {
+        name: 'ATBB',
+        status: 'active',
+        searchUrl: 'https://members.athome.jp/portal',
+        features: ['流通物件検索', '所在地検索', '沿線検索']
+      },
+      {
+        name: 'ITANDI BB',
+        status: 'active',
+        searchUrl: 'https://itandibb.com/rent_rooms/list',
+        features: ['所在地で絞り込み', '路線・駅で絞り込み', '詳細条件検索']
+      },
+      {
+        name: 'いえらぶBB',
+        status: 'active',
+        searchUrl: 'https://bb.ielove.jp/ielovebb/rent/searchmenu/',
+        features: ['市区町村から探す', '路線・駅から探す', '地図から探す']
+      }
+    ]
+  });
+});
+
 app.listen(PORT, () => {
-  console.log('Server running on http://localhost:' + PORT);
+  console.log('='.repeat(60));
+  console.log('  Multi-Platform Property Search System');
+  console.log('='.repeat(60));
+  console.log('  Server running on: http://localhost:' + PORT);
+  console.log('  Platforms: ATBB, ITANDI BB, いえらぶBB');
+  console.log('='.repeat(60));
 });

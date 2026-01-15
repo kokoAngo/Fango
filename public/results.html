@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>検索結果 - Housing MBTI Finder</title>
+    <title>検索結果 - 物件検索システム</title>
     <style>
         * {
             margin: 0;
@@ -30,33 +30,34 @@
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 40px;
+            padding: 30px 40px;
             text-align: center;
         }
 
         .header h1 {
-            font-size: 2.5em;
+            font-size: 2em;
             margin-bottom: 10px;
         }
 
         .header p {
-            font-size: 1.2em;
+            font-size: 1.1em;
             opacity: 0.9;
         }
 
         .content {
-            padding: 40px;
+            padding: 30px;
         }
 
         .back-button {
             display: inline-block;
-            margin-bottom: 30px;
-            padding: 12px 30px;
+            margin-bottom: 20px;
+            padding: 12px 25px;
             background: #667eea;
             color: white;
             text-decoration: none;
             border-radius: 25px;
             transition: all 0.3s ease;
+            font-size: 0.95em;
         }
 
         .back-button:hover {
@@ -64,136 +65,140 @@
             transform: translateX(-5px);
         }
 
-        .results-header {
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #eee;
+        /* Tab Navigation Styles */
+        .tabs-container {
+            margin-bottom: 25px;
         }
 
-        .results-header h2 {
-            color: #667eea;
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .results-count {
-            color: #666;
-            font-size: 1.1em;
-        }
-
-        .properties-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 30px;
-        }
-
-        .property-card {
-            background: white;
-            border: 2px solid #eee;
+        .tabs-nav {
+            display: flex;
+            gap: 5px;
+            background: #f0f4ff;
+            padding: 8px;
             border-radius: 15px;
-            overflow: hidden;
+            overflow-x: auto;
+        }
+
+        .tab-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 15px 25px;
+            border: none;
+            background: transparent;
+            color: #666;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 10px;
             transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
-
-        .property-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
-            border-color: #667eea;
-        }
-
-        .property-image {
-            width: 100%;
-            height: 200px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
             align-items: center;
             justify-content: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            font-size: 3em;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
         }
 
-        .property-content {
-            padding: 25px;
-        }
-
-        .property-name {
-            font-size: 1.4em;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 15px;
-        }
-
-        .property-details {
-            margin-bottom: 10px;
-        }
-
-        .property-detail {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
-        }
-
-        .property-detail:last-child {
-            border-bottom: none;
-        }
-
-        .detail-label {
-            color: #666;
-            font-weight: 500;
-        }
-
-        .detail-value {
-            color: #333;
-            font-weight: bold;
-        }
-
-        .rent-highlight {
-            color: #667eea;
+        .tab-btn .tab-icon {
             font-size: 1.2em;
         }
 
-        .no-results {
-            text-align: center;
-            padding: 60px 20px;
+        .tab-btn .tab-status {
+            font-size: 0.75em;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.2);
         }
 
-        .no-results h2 {
-            color: #667eea;
-            font-size: 2em;
-            margin-bottom: 20px;
+        .tab-btn.active .tab-status {
+            background: rgba(255,255,255,0.3);
         }
 
-        .no-results p {
-            color: #666;
-            font-size: 1.2em;
-            margin-bottom: 30px;
+        .tab-btn.has-results .tab-status {
+            background: #28a745;
+            color: white;
         }
 
-        /* PDF Display Section */
-        .pdf-section {
-            margin-bottom: 30px;
+        .tab-btn.no-results .tab-status {
+            background: #dc3545;
+            color: white;
         }
 
+        /* Tab Content Styles */
+        .tabs-content {
+            min-height: 500px;
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* PDF Section Styles */
         .pdf-container {
             background: #f8f9fa;
             border: 2px solid #667eea;
             border-radius: 15px;
             padding: 20px;
-            margin-bottom: 20px;
         }
 
         .pdf-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
         .pdf-header h3 {
             color: #667eea;
-            font-size: 1.5em;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .platform-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .platform-badge.itandi {
+            background: #ff6b35;
+            color: white;
+        }
+
+        .platform-badge.atbb {
+            background: #00a0e9;
+            color: white;
+        }
+
+        .platform-badge.ierabu {
+            background: #4caf50;
+            color: white;
         }
 
         .pdf-info {
@@ -203,15 +208,24 @@
 
         .pdf-viewer {
             width: 100%;
-            height: 800px;
+            height: 700px;
             border: 1px solid #ddd;
             border-radius: 10px;
             background: white;
         }
 
+        .pdf-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
         .pdf-download-btn {
-            display: inline-block;
-            padding: 15px 30px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 25px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             text-decoration: none;
@@ -219,6 +233,7 @@
             font-weight: bold;
             transition: all 0.3s ease;
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            font-size: 0.95em;
         }
 
         .pdf-download-btn:hover {
@@ -226,39 +241,33 @@
             box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
         }
 
-        .pdf-actions {
-            display: flex;
-            gap: 15px;
-            margin-top: 20px;
-        }
-
         /* Property IDs Section */
         .property-ids-section {
-            margin-top: 30px;
-            padding: 20px;
+            margin-top: 20px;
+            padding: 15px;
             background: #f0f4ff;
-            border-radius: 15px;
+            border-radius: 12px;
             border: 1px solid #667eea;
         }
 
         .property-ids-section h4 {
             color: #667eea;
-            margin-bottom: 15px;
-            font-size: 1.2em;
+            margin-bottom: 12px;
+            font-size: 1em;
         }
 
         .property-ids-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
         }
 
         .property-id-tag {
             background: white;
-            padding: 8px 15px;
-            border-radius: 20px;
+            padding: 6px 12px;
+            border-radius: 15px;
             font-family: monospace;
-            font-size: 0.95em;
+            font-size: 0.85em;
             color: #333;
             border: 1px solid #ddd;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
@@ -278,7 +287,34 @@
             border-color: #28a745;
         }
 
-        .loading {
+        /* No Results State */
+        .no-results-panel {
+            text-align: center;
+            padding: 60px 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 2px dashed #ddd;
+        }
+
+        .no-results-panel .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .no-results-panel h3 {
+            color: #666;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+
+        .no-results-panel p {
+            color: #999;
+            font-size: 1em;
+        }
+
+        /* Loading State */
+        .loading-panel {
             text-align: center;
             padding: 60px 20px;
         }
@@ -297,192 +333,410 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Summary Section */
+        .search-summary {
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            border: 1px solid #667eea;
+        }
+
+        .search-summary h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .summary-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .summary-item .label {
+            color: #666;
+            font-size: 0.85em;
+            margin-bottom: 5px;
+        }
+
+        .summary-item .value {
+            color: #333;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+
+            .tabs-nav {
+                flex-direction: column;
+            }
+
+            .tab-btn {
+                min-width: auto;
+            }
+
+            .pdf-viewer {
+                height: 500px;
+            }
+
+            .pdf-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏠 検索結果</h1>
-            <p id="mbtiType"></p>
+            <h1>🏠 物件検索結果</h1>
+            <p id="searchInfo">検索結果を表示しています</p>
         </div>
 
         <div class="content">
             <a href="/" class="back-button">← 検索に戻る</a>
 
-            <div class="results-header">
-                <h2>おすすめ物件</h2>
-                <p class="results-count" id="resultsCount"></p>
-            </div>
-
-            <div id="loadingIndicator" class="loading">
-                <div class="spinner"></div>
-                <p>結果を読み込んでいます...</p>
-            </div>
-
-            <!-- PDF Display Section -->
-            <div id="pdfSection" class="pdf-section" style="display: none;">
-                <div class="pdf-container">
-                    <div class="pdf-header">
-                        <h3>物件図面 PDF</h3>
-                        <span class="pdf-info" id="pdfInfo"></span>
+            <!-- Search Summary -->
+            <div id="searchSummary" class="search-summary" style="display: none;">
+                <h3>📊 検索結果サマリー</h3>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="label">ITANDI</div>
+                        <div class="value" id="itandiCount">-</div>
                     </div>
-                    <iframe id="pdfViewer" class="pdf-viewer" frameborder="0"></iframe>
-                    <div class="pdf-actions">
-                        <a id="pdfDownloadBtn" class="pdf-download-btn" download>PDFをダウンロード</a>
+                    <div class="summary-item">
+                        <div class="label">ATBB</div>
+                        <div class="value" id="atbbCount">-</div>
                     </div>
-                    <!-- Property IDs Display -->
-                    <div id="propertyIdsSection" class="property-ids-section" style="display: none;">
-                        <h4>物件ID一覧 (クリックでコピー)</h4>
-                        <div id="propertyIdsList" class="property-ids-list"></div>
+                    <div class="summary-item">
+                        <div class="label">いえらぶBB</div>
+                        <div class="value" id="ierabuCount">-</div>
                     </div>
                 </div>
             </div>
 
-            <div id="propertiesGrid" class="properties-grid"></div>
+            <!-- Tabs Navigation -->
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" data-tab="itandi" onclick="switchTab('itandi')">
+                        <span class="tab-icon">🏢</span>
+                        <span>ITANDI</span>
+                        <span class="tab-status" id="itandiStatus">-</span>
+                    </button>
+                    <button class="tab-btn" data-tab="atbb" onclick="switchTab('atbb')">
+                        <span class="tab-icon">🏠</span>
+                        <span>ATBB</span>
+                        <span class="tab-status" id="atbbStatus">-</span>
+                    </button>
+                    <button class="tab-btn" data-tab="ierabu" onclick="switchTab('ierabu')">
+                        <span class="tab-icon">🏡</span>
+                        <span>いえらぶBB</span>
+                        <span class="tab-status" id="ierabuStatus">-</span>
+                    </button>
+                </div>
 
-            <div id="noResults" class="no-results" style="display: none;">
-                <h2>物件が見つかりませんでした</h2>
-                <p>別のMBTIタイプを試すか、検索条件を変更してください。</p>
-                <a href="/" class="back-button">検索に戻る</a>
+                <!-- Tabs Content -->
+                <div class="tabs-content">
+                    <!-- ITANDI Tab -->
+                    <div id="itandi-panel" class="tab-panel active">
+                        <div id="itandi-loading" class="loading-panel">
+                            <div class="spinner"></div>
+                            <p>ITANDIの結果を読み込み中...</p>
+                        </div>
+                        <div id="itandi-content" style="display: none;"></div>
+                        <div id="itandi-no-results" class="no-results-panel" style="display: none;">
+                            <div class="icon">📭</div>
+                            <h3>ITANDIの結果がありません</h3>
+                            <p>該当する物件が見つかりませんでした</p>
+                        </div>
+                    </div>
+
+                    <!-- ATBB Tab -->
+                    <div id="atbb-panel" class="tab-panel">
+                        <div id="atbb-loading" class="loading-panel">
+                            <div class="spinner"></div>
+                            <p>ATBBの結果を読み込み中...</p>
+                        </div>
+                        <div id="atbb-content" style="display: none;"></div>
+                        <div id="atbb-no-results" class="no-results-panel" style="display: none;">
+                            <div class="icon">📭</div>
+                            <h3>ATBBの結果がありません</h3>
+                            <p>該当する物件が見つかりませんでした</p>
+                        </div>
+                    </div>
+
+                    <!-- いえらぶBB Tab -->
+                    <div id="ierabu-panel" class="tab-panel">
+                        <div id="ierabu-loading" class="loading-panel">
+                            <div class="spinner"></div>
+                            <p>いえらぶBBの結果を読み込み中...</p>
+                        </div>
+                        <div id="ierabu-content" style="display: none;"></div>
+                        <div id="ierabu-no-results" class="no-results-panel" style="display: none;">
+                            <div class="icon">📭</div>
+                            <h3>いえらぶBBの結果がありません</h3>
+                            <p>該当する物件が見つかりませんでした</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        // Tab switching function
+        function switchTab(tabId) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.tab === tabId) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Update tab panels
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            document.getElementById(tabId + '-panel').classList.add('active');
+        }
+
+        // Create PDF display HTML
+        function createPdfDisplay(platform, data) {
+            const platformNames = {
+                itandi: 'ITANDI',
+                atbb: 'ATBB',
+                ierabu: 'いえらぶBB'
+            };
+
+            const platformColors = {
+                itandi: 'itandi',
+                atbb: 'atbb',
+                ierabu: 'ierabu'
+            };
+
+            // 支持多个PDF
+            const pdfUrls = data.pdfUrls || (data.pdfUrl ? [data.pdfUrl] : []);
+            const pdfCount = pdfUrls.length || data.count || 0;
+
+            let html = `
+                <div class="pdf-container">
+                    <div class="pdf-header">
+                        <h3>
+                            <span class="platform-badge ${platformColors[platform]}">${platformNames[platform]}</span>
+                            物件図面 PDF
+                        </h3>
+                        <span class="pdf-info">${pdfCount}件の物件</span>
+                    </div>
+            `;
+
+            // 截图不在前端显示，仅用于后端分析
+
+            // 显示PDF列表
+            if (pdfUrls.length > 0) {
+                if (pdfUrls.length === 1) {
+                    // 单个PDF - 使用iframe显示
+                    html += `
+                        <iframe class="pdf-viewer" src="${pdfUrls[0]}" frameborder="0"></iframe>
+                        <div class="pdf-actions">
+                            <a href="${pdfUrls[0]}" class="pdf-download-btn" download="${platform}_property.pdf">
+                                📥 PDFをダウンロード
+                            </a>
+                        </div>
+                    `;
+                } else {
+                    // 多个PDF - 显示列表
+                    html += `
+                        <div style="margin-top: 15px;">
+                            <h4 style="color: #667eea; margin-bottom: 15px;">📄 PDF一覧 (${pdfUrls.length}件)</h4>
+                            <div style="display: grid; gap: 10px;">
+                    `;
+                    pdfUrls.forEach((url, index) => {
+                        const filename = url.split('/').pop();
+                        html += `
+                            <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: white; border-radius: 10px; border: 1px solid #ddd;">
+                                <span style="font-weight: bold; color: #667eea;">${index + 1}</span>
+                                <span style="flex: 1; font-size: 0.9em; color: #666;">${filename}</span>
+                                <a href="${url}" target="_blank" class="pdf-download-btn" style="padding: 8px 15px; font-size: 0.85em;">
+                                    👁 表示
+                                </a>
+                                <a href="${url}" download class="pdf-download-btn" style="padding: 8px 15px; font-size: 0.85em; background: #28a745;">
+                                    📥 DL
+                                </a>
+                            </div>
+                        `;
+                    });
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+            } else {
+                html += `
+                    <div class="no-results-panel" style="margin-top: 15px;">
+                        <div class="icon">📄</div>
+                        <h3>PDFファイルがありません</h3>
+                        <p>スクリーンショットのみ保存されました</p>
+                    </div>
+                `;
+            }
+
+            // Add property IDs if available
+            if (data.propertyIds && data.propertyIds.length > 0) {
+                html += `
+                    <div class="property-ids-section">
+                        <h4>📋 物件ID一覧 (クリックでコピー)</h4>
+                        <div class="property-ids-list">
+                            ${data.propertyIds.map(id => `
+                                <span class="property-id-tag" onclick="copyPropertyId(this, '${id}')">${id}</span>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        // Copy property ID to clipboard
+        function copyPropertyId(element, id) {
+            navigator.clipboard.writeText(id).then(() => {
+                element.classList.add('copied');
+                const originalText = element.textContent;
+                element.textContent = id + ' ✓';
+                setTimeout(() => {
+                    element.classList.remove('copied');
+                    element.textContent = originalText;
+                }, 1500);
+            });
+        }
+
+        // Update tab status
+        function updateTabStatus(platform, count) {
+            const statusEl = document.getElementById(platform + 'Status');
+            const tabBtn = document.querySelector(`[data-tab="${platform}"]`);
+
+            if (count > 0) {
+                statusEl.textContent = count + '件';
+                tabBtn.classList.add('has-results');
+                tabBtn.classList.remove('no-results');
+            } else {
+                statusEl.textContent = '0件';
+                tabBtn.classList.add('no-results');
+                tabBtn.classList.remove('has-results');
+            }
+        }
+
+        // Load results for a platform
+        function loadPlatformResults(platform, data) {
+            const loadingEl = document.getElementById(platform + '-loading');
+            const contentEl = document.getElementById(platform + '-content');
+            const noResultsEl = document.getElementById(platform + '-no-results');
+
+            loadingEl.style.display = 'none';
+
+            // 有PDF或截图都显示内容
+            const hasPdf = data && (data.pdfUrl || (data.pdfUrls && data.pdfUrls.length > 0));
+            const hasScreenshot = data && data.screenshotUrl;
+            const hasContent = hasPdf || hasScreenshot;
+
+            if (hasContent) {
+                contentEl.innerHTML = createPdfDisplay(platform, data);
+                contentEl.style.display = 'block';
+                const count = data.pdfUrls?.length || data.count || (data.pdfUrl ? 1 : 0);
+                updateTabStatus(platform, count);
+            } else {
+                noResultsEl.style.display = 'block';
+                updateTabStatus(platform, 0);
+            }
+        }
+
+        // Main load function
         function loadResults() {
             const resultsData = localStorage.getItem('searchResults');
-            const mbtiType = localStorage.getItem('selectedMBTI');
-
-            // Hide loading indicator
-            document.getElementById('loadingIndicator').style.display = 'none';
 
             if (!resultsData) {
-                // No results found, redirect to home
-                window.location.href = '/';
+                // No results, show empty state for all
+                ['itandi', 'atbb', 'ierabu'].forEach(platform => {
+                    document.getElementById(platform + '-loading').style.display = 'none';
+                    document.getElementById(platform + '-no-results').style.display = 'block';
+                    updateTabStatus(platform, 0);
+                });
                 return;
             }
 
             const data = JSON.parse(resultsData);
 
-            // Set MBTI type in header
-            document.getElementById('mbtiType').textContent =
-                `あなたのタイプ: ${mbtiType || data.mbti_type || ''}`;
+            // Show search summary
+            document.getElementById('searchSummary').style.display = 'block';
 
-            const count = document.getElementById('resultsCount');
-
-            // Check if result is PDF type
+            // Check if it's the old single-result format or new multi-platform format
             if (data.type === 'pdf' && data.pdfUrl) {
-                displayPDF(data);
-                count.textContent = `${data.count || 1}件の物件図面を取得しました`;
-                return;
-            }
+                // Old format - show in ATBB tab (assuming it's from ATBB)
+                loadPlatformResults('atbb', data);
+                document.getElementById('atbbCount').textContent = (data.count || 1) + '件';
 
-            // Display properties (fallback)
-            const properties = data.properties || [];
-            const grid = document.getElementById('propertiesGrid');
+                // Show empty for others
+                ['itandi', 'ierabu'].forEach(platform => {
+                    document.getElementById(platform + '-loading').style.display = 'none';
+                    document.getElementById(platform + '-no-results').style.display = 'block';
+                    updateTabStatus(platform, 0);
+                    document.getElementById(platform + 'Count').textContent = '0件';
+                });
 
-            if (properties.length === 0) {
-                document.getElementById('noResults').style.display = 'block';
-                count.textContent = '0件の物件が見つかりました';
-                return;
-            }
+                // Switch to ATBB tab
+                switchTab('atbb');
+            } else if (data.platforms) {
+                // New multi-platform format
+                ['itandi', 'atbb', 'ierabu'].forEach(platform => {
+                    const platformData = data.platforms[platform];
+                    loadPlatformResults(platform, platformData);
 
-            count.textContent = `${properties.length}件の物件が見つかりました`;
+                    const count = platformData?.count || 0;
+                    document.getElementById(platform + 'Count').textContent = count + '件';
+                });
 
-            properties.forEach((property, index) => {
-                const card = createPropertyCard(property, index);
-                grid.appendChild(card);
-            });
-        }
-
-        function displayPDF(data) {
-            const pdfSection = document.getElementById('pdfSection');
-            const pdfViewer = document.getElementById('pdfViewer');
-            const pdfDownloadBtn = document.getElementById('pdfDownloadBtn');
-            const pdfInfo = document.getElementById('pdfInfo');
-
-            // Show PDF section
-            pdfSection.style.display = 'block';
-
-            // Set PDF source
-            pdfViewer.src = data.pdfUrl;
-
-            // Set download link
-            pdfDownloadBtn.href = data.pdfUrl;
-            pdfDownloadBtn.download = 'properties.pdf';
-
-            // Set info
-            pdfInfo.textContent = `${data.count || 1}件の物件`;
-
-            // Also show searched locations if available
-            if (data.searched_locations && data.searched_locations.length > 0) {
-                const locations = data.searched_locations.map(loc =>
-                    `${loc.prefecture} ${loc.city}`
-                ).join(', ');
-                pdfInfo.textContent += ` - ${locations}`;
-            }
-
-            // Display property IDs
-            if (data.propertyIds && data.propertyIds.length > 0) {
-                const propertyIdsSection = document.getElementById('propertyIdsSection');
-                const propertyIdsList = document.getElementById('propertyIdsList');
-
-                propertyIdsSection.style.display = 'block';
-                propertyIdsList.innerHTML = '';
-
-                data.propertyIds.forEach((id, index) => {
-                    const tag = document.createElement('span');
-                    tag.className = 'property-id-tag';
-                    tag.textContent = id;
-                    tag.title = 'クリックでコピー';
-                    tag.onclick = function() {
-                        navigator.clipboard.writeText(id).then(() => {
-                            tag.classList.add('copied');
-                            tag.textContent = id + ' ✓';
-                            setTimeout(() => {
-                                tag.classList.remove('copied');
-                                tag.textContent = id;
-                            }, 1500);
-                        });
-                    };
-                    propertyIdsList.appendChild(tag);
+                // Switch to first tab with results
+                const firstWithResults = ['itandi', 'atbb', 'ierabu'].find(p =>
+                    data.platforms[p]?.pdfUrl
+                );
+                if (firstWithResults) {
+                    switchTab(firstWithResults);
+                }
+            } else {
+                // Unknown format - show empty
+                ['itandi', 'atbb', 'ierabu'].forEach(platform => {
+                    document.getElementById(platform + '-loading').style.display = 'none';
+                    document.getElementById(platform + '-no-results').style.display = 'block';
+                    updateTabStatus(platform, 0);
+                    document.getElementById(platform + 'Count').textContent = '0件';
                 });
             }
-        }
 
-        function createPropertyCard(property, index) {
-            const card = document.createElement('div');
-            card.className = 'property-card';
-
-            card.innerHTML = `
-                <div class="property-image">
-                    🏢
-                </div>
-                <div class="property-content">
-                    <div class="property-name">
-                        ${property.name || `物件 #${index + 1}`}
-                    </div>
-                    <div class="property-details">
-                        ${createDetailRow('所在地', property.location || '情報なし')}
-                        ${createDetailRow('賃料', property.rent || '情報なし', 'rent-highlight')}
-                        ${createDetailRow('面積', property.area || '情報なし')}
-                        ${createDetailRow('間取り', property.layout || '情報なし')}
-                        ${createDetailRow('築年数', property.age || '情報なし')}
-                        ${createDetailRow('階数', property.floor || '情報なし')}
-                    </div>
-                </div>
-            `;
-
-            return card;
-        }
-
-        function createDetailRow(label, value, valueClass = '') {
-            return `
-                <div class="property-detail">
-                    <span class="detail-label">${label}:</span>
-                    <span class="detail-value ${valueClass}">${value}</span>
-                </div>
-            `;
+            // Update search info
+            if (data.user_requirements) {
+                document.getElementById('searchInfo').textContent =
+                    '検索条件: ' + data.user_requirements.substring(0, 50) + (data.user_requirements.length > 50 ? '...' : '');
+            }
         }
 
         // Load results on page load
