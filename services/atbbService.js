@@ -38,21 +38,89 @@ class ATBBService {
     // 启动浏览器
     async initBrowser() {
         if (!this.browser) {
+            // 创建用户数据目录用于保存Chrome设置
+            const userDataDir = path.join(__dirname, '..', 'chrome-user-data-atbb');
+
+            // 确保下载目录存在
+            if (this.downloadDir) {
+                try {
+                    await fs.mkdir(this.downloadDir, { recursive: true });
+                } catch (e) {}
+            }
+
+            // Chrome启动参数 - 设置PDF自动下载而不是在浏览器中预览
             this.browser = await puppeteer.launch({
                 headless: false,
                 executablePath: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
                 defaultViewport: { width: 1400, height: 900 },
-                args: ['--lang=ja-JP', '--no-sandbox']
+                userDataDir: userDataDir,
+                args: [
+                    '--lang=ja-JP',
+                    '--no-sandbox',
+                    '--disable-extensions'
+                ]
             });
+
+            // 打开Chrome PDF设置页面，设置为直接下载PDF
+            console.log('[ATBB] 配置Chrome PDF设置...');
+            const settingsPage = await this.browser.newPage();
+            await settingsPage.goto('chrome://settings/content/pdfDocuments', { waitUntil: 'networkidle2' });
+            await new Promise(r => setTimeout(r, 1000));
+
+            // 点击"PDF をダウンロードする"选项
+            try {
+                await settingsPage.evaluate(() => {
+                    // 查找包含"ダウンロード"文字的radio button或选项
+                    const labels = document.querySelectorAll('label, cr-radio-button, div[role="radio"]');
+                    for (const label of labels) {
+                        if (label.textContent && label.textContent.includes('ダウンロード')) {
+                            label.click();
+                            return true;
+                        }
+                    }
+                    // 尝试其他选择器
+                    const options = document.querySelectorAll('[aria-label*="ダウンロード"], [title*="ダウンロード"]');
+                    for (const opt of options) {
+                        opt.click();
+                        return true;
+                    }
+                    return false;
+                });
+                console.log('[ATBB] PDF设置已更改为直接下载');
+            } catch (e) {
+                console.log('[ATBB] PDF设置可能已经是下载模式');
+            }
+            await new Promise(r => setTimeout(r, 500));
+            await settingsPage.close();
+
             this.page = await this.browser.newPage();
 
-            // 配置下载目录
+            // 配置下载目录和PDF自动下载
             if (this.downloadDir) {
                 const client = await this.page.target().createCDPSession();
+
+                // 配置下载行为
                 await client.send('Page.setDownloadBehavior', {
                     behavior: 'allow',
                     downloadPath: this.downloadDir
                 });
+
+                // 使用Browser.setDownloadBehavior来设置全局下载行为
+                try {
+                    await client.send('Browser.setDownloadBehavior', {
+                        behavior: 'allowAndName',
+                        downloadPath: this.downloadDir,
+                        eventsEnabled: true
+                    });
+                } catch (e) {
+                    // 如果allowAndName不支持，尝试allow
+                    await client.send('Browser.setDownloadBehavior', {
+                        behavior: 'allow',
+                        downloadPath: this.downloadDir,
+                        eventsEnabled: true
+                    });
+                }
+
                 console.log('[ATBB] 下载路径已配置:', this.downloadDir);
             }
         }
@@ -1195,14 +1263,91 @@ JSON形式で回答してください：
         return [];
     }
 
-    // 下载PDF - ATBB流程: インフォシート按钮 → 截图infosheet div元素 → 合并PDF
+    // 为新页面配置下载行为
+    async configureDownloadForPage(page) {
+        if (!page || !this.downloadDir) return;
+
+        try {
+            const client = await page.target().createCDPSession();
+
+            // 页面级别的下载配置
+            await client.send('Page.setDownloadBehavior', {
+                behavior: 'allow',
+                downloadPath: this.downloadDir
+            });
+
+            // 浏览器级别的下载配置（对于跨域页面更可靠）
+            try {
+                await client.send('Browser.setDownloadBehavior', {
+                    behavior: 'allowAndName',
+                    downloadPath: this.downloadDir,
+                    eventsEnabled: true
+                });
+            } catch (e) {
+                // 如果allowAndName不支持，尝试allow
+                await client.send('Browser.setDownloadBehavior', {
+                    behavior: 'allow',
+                    downloadPath: this.downloadDir,
+                    eventsEnabled: true
+                });
+            }
+
+            console.log('[ATBB] 页面下载行为已配置');
+        } catch (e) {
+            console.log('[ATBB] 配置下载行为失败:', e.message);
+        }
+    }
+
+    // 获取当前下载目录中的文件列表
+    async getExistingPdfFiles() {
+        try {
+            const files = await fs.readdir(this.downloadDir);
+            return files.filter(f => f.endsWith('.pdf') && !f.includes('merged'));
+        } catch (e) {
+            return [];
+        }
+    }
+
+    // 等待新PDF文件下载完成
+    async waitForNewPdfDownload(existingFiles, timeout = 15000) {
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < timeout) {
+            try {
+                const currentFiles = await fs.readdir(this.downloadDir);
+                const pdfFiles = currentFiles.filter(f => f.endsWith('.pdf') && !f.includes('merged'));
+                const tempFiles = currentFiles.filter(f => f.endsWith('.crdownload') || f.endsWith('.tmp'));
+
+                // 检查是否有新的PDF文件且没有临时文件
+                const newPdfs = pdfFiles.filter(f => !existingFiles.includes(f));
+                if (newPdfs.length > 0 && tempFiles.length === 0) {
+                    console.log('[ATBB] 检测到新PDF文件:', newPdfs);
+                    return newPdfs.map(f => path.join(this.downloadDir, f));
+                }
+
+                // 如果有临时文件，继续等待
+                if (tempFiles.length > 0) {
+                    console.log('[ATBB] 下载中... 临时文件:', tempFiles.length);
+                }
+            } catch (e) {
+                // 忽略目录读取错误
+            }
+
+            await wait(500);
+        }
+
+        console.log('[ATBB] 等待PDF下载超时');
+        return [];
+    }
+
+    // 下载PDF - ATBB流程: インフォシート按钮 → PDF出力 → 自动下载
     async downloadPDF() {
         const page = this.searchPage;
-        console.log('[ATBB] 开始处理物件截图...');
+        console.log('[ATBB] 开始下载PDF (自动下载方式)...');
 
         if (!this.downloadDir) {
             console.log('[ATBB] 未设置下载目录，跳过处理');
-            return [];
+            return { pdfs: [], screenshotCount: 0 };
         }
 
         // 确保目录存在
@@ -1210,7 +1355,7 @@ JSON形式で回答してください：
             await fs.mkdir(this.downloadDir, { recursive: true });
         } catch (e) {}
 
-        const screenshotPaths = []; // 存储截图路径
+        const downloadedPdfs = []; // 存储下载的PDF路径
 
         // 获取所有インフォシート按钮
         const infoSheetButtons = await page.$$('button[name^="infoSheet"]');
@@ -1218,7 +1363,7 @@ JSON形式で回答してください：
 
         if (infoSheetButtons.length === 0) {
             console.log('[ATBB] 未找到インフォシート按钮');
-            return [];
+            return { pdfs: [], screenshotCount: 0 };
         }
 
         // 最多处理5个物件
@@ -1228,6 +1373,9 @@ JSON形式で回答してください：
             console.log(`[ATBB] 处理第 ${i + 1}/${maxDownloads} 个物件...`);
 
             try {
+                // 记录当前已有的PDF文件
+                const existingPdfs = await this.getExistingPdfFiles();
+
                 // 重新获取按钮（页面可能已刷新）
                 const buttons = await page.$$('button[name^="infoSheet"]');
                 if (i >= buttons.length) {
@@ -1244,7 +1392,7 @@ JSON形式で回答してください：
                 await buttons[i].click();
                 await wait(2000);
 
-                // 等待新页面/弹窗打开
+                // 等待新页面打开
                 const pagesAfter = await this.browser.pages();
                 console.log('[ATBB] 页面数量变化:', pageCountBefore, '->', pagesAfter.length);
 
@@ -1252,68 +1400,134 @@ JSON形式で回答してください：
                 if (pagesAfter.length > pageCountBefore) {
                     // 新页面打开了
                     infoSheetPage = pagesAfter[pagesAfter.length - 1];
+
+                    // 配置新页面的下载行为
+                    await this.configureDownloadForPage(infoSheetPage);
+
                     await infoSheetPage.bringToFront();
                     await wait(3000); // 等待页面完全加载
                     console.log('[ATBB] インフォシート页面URL:', infoSheetPage.url());
 
-                    // 查找物件信息div元素并截图
-                    // 目标div: class包含 "is-base infosheet" 或 "infosheet-a-k"
-                    console.log('[ATBB] 查找物件信息div元素...');
+                    // 查找PDF出力按钮
+                    console.log('[ATBB] 查找PDF出力按钮...');
 
-                    // 尝试多种选择器
-                    const selectors = [
-                        'div.is-base.infosheet-a-k',
-                        'div[class*="infosheet-a-k"]',
-                        'div[class*="is-base"][class*="infosheet"]',
-                        'div.infosheet-a-k',
-                        'div[class*="chintai-kyojuyo"]'
-                    ];
+                    // 尝试在页面中查找PDF出力按钮
+                    const pdfButtonInfo = await infoSheetPage.evaluate(() => {
+                        const elements = document.querySelectorAll('button, input[type="button"], input[type="submit"], a');
+                        const pdfButtons = [];
+                        for (const el of elements) {
+                            const text = el.textContent || el.value || '';
+                            if (text.includes('PDF') || text.includes('pdf')) {
+                                pdfButtons.push({
+                                    tag: el.tagName,
+                                    text: text.trim().substring(0, 50),
+                                    className: el.className,
+                                    id: el.id
+                                });
+                            }
+                        }
+                        return pdfButtons;
+                    });
 
-                    let targetElement = null;
-                    for (const selector of selectors) {
-                        targetElement = await infoSheetPage.$(selector);
-                        if (targetElement) {
-                            console.log('[ATBB] 找到目标元素，选择器:', selector);
-                            break;
+                    console.log('[ATBB] 找到PDF相关按钮:', JSON.stringify(pdfButtonInfo, null, 2));
+
+                    // 记录点击PDF按钮前的PDF文件
+                    const beforePdfClick = await this.getExistingPdfFiles();
+
+                    // 点击PDF出力按钮（右上角的那个，id为button-pdf-format）
+                    const clickResult = await infoSheetPage.evaluate(() => {
+                        // 优先点击id为button-pdf-format的按钮
+                        const targetButton = document.getElementById('button-pdf-format');
+                        if (targetButton) {
+                            targetButton.click();
+                            return { success: true, text: 'PDF出力 (button-pdf-format)' };
+                        }
+
+                        // 备选：查找text完全等于"PDF出力"的按钮（不含"不動産向"）
+                        const elements = document.querySelectorAll('button, input[type="button"], input[type="submit"], a');
+                        for (const el of elements) {
+                            const text = (el.textContent || el.value || '').trim();
+                            if (text === 'PDF出力' || text === 'PDF 出力') {
+                                el.click();
+                                return { success: true, text: text };
+                            }
+                        }
+
+                        // 再备选：查找包含PDF出力但不含"不動産向"的按钮
+                        for (const el of elements) {
+                            const text = (el.textContent || el.value || '').trim();
+                            if ((text.includes('PDF出力') || text.includes('PDF 出力')) && !text.includes('不動産向')) {
+                                el.click();
+                                return { success: true, text: text };
+                            }
+                        }
+
+                        return { success: false };
+                    });
+
+                    console.log('[ATBB] PDF按钮点击结果:', clickResult);
+
+                    if (clickResult.success) {
+                        await wait(2000); // 等待PDF生成/页面打开
+
+                        // 检查是否有新页面打开（PDF预览或直接下载）
+                        const pagesAfterPdf = await this.browser.pages();
+                        console.log('[ATBB] PDF点击后页面数:', pagesAfterPdf.length);
+
+                        if (pagesAfterPdf.length > pagesAfter.length) {
+                            // 新页面打开了（可能是PDF预览）
+                            const pdfPage = pagesAfterPdf[pagesAfterPdf.length - 1];
+
+                            // 配置PDF页面的下载行为
+                            await this.configureDownloadForPage(pdfPage);
+
+                            await pdfPage.bringToFront();
+                            await wait(1000);
+
+                            const pdfUrl = pdfPage.url();
+                            console.log('[ATBB] PDF页面URL:', pdfUrl);
+
+                            // 由于禁用了PDF预览，PDF应该直接下载
+                            // 等待下载完成
+                            const newPdfs = await this.waitForNewPdfDownload(beforePdfClick, 10000);
+                            if (newPdfs.length > 0) {
+                                downloadedPdfs.push(...newPdfs);
+                                console.log('[ATBB] PDF已下载:', newPdfs);
+                            } else {
+                                // 如果没有检测到下载，尝试使用fetch API下载
+                                console.log('[ATBB] 尝试通过URL下载PDF...');
+                                if (pdfUrl && (pdfUrl.includes('.pdf') || pdfUrl.includes('pdf'))) {
+                                    try {
+                                        const pdfPath = path.join(this.downloadDir, `property_${i + 1}_${Date.now()}.pdf`);
+                                        // 使用page.pdf()保存当前页面为PDF
+                                        await pdfPage.pdf({ path: pdfPath, format: 'A4' });
+                                        downloadedPdfs.push(pdfPath);
+                                        console.log('[ATBB] PDF已通过page.pdf()保存:', pdfPath);
+                                    } catch (pdfError) {
+                                        console.log('[ATBB] page.pdf()失败:', pdfError.message);
+                                    }
+                                }
+                            }
+
+                            // 关闭PDF页面
+                            try {
+                                await pdfPage.close();
+                            } catch (e) {}
+                        } else {
+                            // 没有打开新页面，PDF可能直接开始下载了
+                            console.log('[ATBB] 等待PDF直接下载...');
+                            const newPdfs = await this.waitForNewPdfDownload(beforePdfClick, 10000);
+                            if (newPdfs.length > 0) {
+                                downloadedPdfs.push(...newPdfs);
+                                console.log('[ATBB] PDF已下载:', newPdfs);
+                            }
                         }
                     }
 
-                    if (targetElement) {
-                        // 滚动到元素位置确保可见
-                        await infoSheetPage.evaluate((el) => {
-                            el.scrollIntoView({ behavior: 'instant', block: 'start' });
-                        }, targetElement);
-                        await wait(1000);
-
-                        // 截图该div元素
-                        const screenshotPath = path.join(this.downloadDir, `property_${i + 1}_${Date.now()}.png`);
-                        await targetElement.screenshot({ path: screenshotPath });
-
-                        console.log('[ATBB] 物件截图已保存:', screenshotPath);
-                        screenshotPaths.push(screenshotPath);
-                    } else {
-                        // 如果找不到特定div，尝试截图整个页面主体区域
-                        console.log('[ATBB] 未找到特定div，尝试截图整个页面...');
-
-                        // 打印页面中的div元素用于调试
-                        const divInfo = await infoSheetPage.evaluate(() => {
-                            const divs = document.querySelectorAll('div[class*="infosheet"], div[class*="is-base"]');
-                            return Array.from(divs).slice(0, 10).map(d => ({
-                                className: d.className,
-                                id: d.id
-                            }));
-                        });
-                        console.log('[ATBB] 页面中的相关div:', JSON.stringify(divInfo, null, 2));
-
-                        // 截图整个页面作为备选
-                        const screenshotPath = path.join(this.downloadDir, `property_${i + 1}_${Date.now()}.png`);
-                        await infoSheetPage.screenshot({ path: screenshotPath, fullPage: true });
-                        console.log('[ATBB] 整页截图已保存:', screenshotPath);
-                        screenshotPaths.push(screenshotPath);
-                    }
-
                     // 关闭インフォシート页面
-                    await infoSheetPage.close();
+                    try {
+                        await infoSheetPage.close();
+                    } catch (e) {}
                     await wait(500);
 
                     // 返回搜索结果页面
@@ -1329,20 +1543,11 @@ JSON形式で回答してください：
             }
         }
 
-        // 合并所有截图为一个PDF
-        if (screenshotPaths.length > 0) {
-            const mergedPdfPath = await this.mergeScreenshotsToPdf(screenshotPaths);
-            console.log('[ATBB] PDF合并完成:', mergedPdfPath);
-            console.log('[ATBB] 截图数量:', screenshotPaths.length);
-            // 返回包含合并PDF路径和截图数量的对象
-            return {
-                pdfs: [mergedPdfPath],
-                screenshotCount: screenshotPaths.length
-            };
-        }
-
-        console.log('[ATBB] 没有截图需要合并');
-        return { pdfs: [], screenshotCount: 0 };
+        console.log('[ATBB] PDF下载完成，共下载:', downloadedPdfs.length, '个文件');
+        return {
+            pdfs: downloadedPdfs,
+            screenshotCount: downloadedPdfs.length
+        };
     }
 
     // 合并截图为PDF

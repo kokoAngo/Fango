@@ -126,31 +126,36 @@ app.post('/api/search', async (req, res) => {
       return null;
     };
 
+    // 从coordinator获取合并结果 (现在返回 { path, count })
+    const atbbMerged = coordination.mergedPdfs?.atbb || { path: null, count: 0 };
+    const itandiMerged = coordination.mergedPdfs?.itandi || { path: null, count: 0 };
+    const ierabuMerged = coordination.mergedPdfs?.ierube_bb || { path: null, count: 0 };
+
     const platforms = {
       atbb: {
         success: atbbResult.success,
-        pdfUrl: getMergedOrFirstPdf(atbbResult.downloadedPdfs, coordination.mergedPdfs?.atbb),
+        pdfUrl: getMergedOrFirstPdf(atbbResult.downloadedPdfs, atbbMerged.path),
         pdfUrls: atbbResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
-        mergedPdfUrl: coordination.mergedPdfs?.atbb ? pathToUrl(coordination.mergedPdfs.atbb) : null,
-        count: atbbResult.screenshotCount || atbbResult.downloadedPdfs?.length || 0,  // 使用截图数量作为物件数
+        mergedPdfUrl: atbbMerged.path ? pathToUrl(atbbMerged.path) : null,
+        count: atbbMerged.count || atbbResult.screenshotCount || atbbResult.downloadedPdfs?.length || 0,
         screenshotUrl: atbbResult.screenshotPath ? pathToUrl(atbbResult.screenshotPath) : null,
         message: atbbResult.message
       },
       itandi: {
         success: itandiResult.success,
-        pdfUrl: getMergedOrFirstPdf(itandiResult.downloadedPdfs, coordination.mergedPdfs?.itandi),
+        pdfUrl: getMergedOrFirstPdf(itandiResult.downloadedPdfs, itandiMerged.path),
         pdfUrls: itandiResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
-        mergedPdfUrl: coordination.mergedPdfs?.itandi ? pathToUrl(coordination.mergedPdfs.itandi) : null,
-        count: itandiResult.downloadedPdfs?.length || 0,
+        mergedPdfUrl: itandiMerged.path ? pathToUrl(itandiMerged.path) : null,
+        count: itandiMerged.count || itandiResult.downloadedPdfs?.length || 0,
         screenshotUrl: itandiResult.screenshotPath ? pathToUrl(itandiResult.screenshotPath) : null,
         message: itandiResult.message
       },
       ierabu: {
         success: ierabuResult.success,
-        pdfUrl: getMergedOrFirstPdf(ierabuResult.downloadedPdfs, coordination.mergedPdfs?.ierube_bb),
+        pdfUrl: getMergedOrFirstPdf(ierabuResult.downloadedPdfs, ierabuMerged.path),
         pdfUrls: ierabuResult.downloadedPdfs?.map(p => pathToUrl(p)).filter(Boolean) || [],
-        mergedPdfUrl: coordination.mergedPdfs?.ierube_bb ? pathToUrl(coordination.mergedPdfs.ierube_bb) : null,
-        count: ierabuResult.downloadedPdfs?.length || 0,
+        mergedPdfUrl: ierabuMerged.path ? pathToUrl(ierabuMerged.path) : null,
+        count: ierabuMerged.count || ierabuResult.downloadedPdfs?.length || 0,
         screenshotUrl: ierabuResult.screenshotPath ? pathToUrl(ierabuResult.screenshotPath) : null,
         message: ierabuResult.message
       }

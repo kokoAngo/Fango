@@ -72,6 +72,7 @@ class SearchCoordinator {
     }
 
     // 合并PDF和图片文件为一个PDF
+    // 返回 { path: 合并后的PDF路径, count: 文件数量 }
     async mergePDFs(platform, sessionFolders) {
         const platformFolder = sessionFolders[platform.toLowerCase()];
         if (!platformFolder) {
@@ -80,8 +81,33 @@ class SearchCoordinator {
 
         console.log(`[Coordinator] 合并文件: ${platform}`);
 
-        // 读取文件夹中的所有PDF和图片文件
-        const files = await fs.readdir(platformFolder);
+        // 读取文件夹中的所有文件
+        let files = await fs.readdir(platformFolder);
+
+        // 检查没有扩展名的文件是否是PDF，如果是就重命名
+        for (const file of files) {
+            if (!file.includes('.') && !file.includes('merged')) {
+                const filePath = path.join(platformFolder, file);
+                try {
+                    // 读取文件头部判断是否是PDF
+                    const buffer = Buffer.alloc(5);
+                    const fd = await fs.open(filePath, 'r');
+                    await fd.read(buffer, 0, 5, 0);
+                    await fd.close();
+
+                    if (buffer.toString() === '%PDF-') {
+                        const newPath = path.join(platformFolder, file + '.pdf');
+                        await fs.rename(filePath, newPath);
+                        console.log(`[Coordinator] 重命名PDF: ${file} -> ${file}.pdf`);
+                    }
+                } catch (e) {
+                    // 忽略错误
+                }
+            }
+        }
+
+        // 重新读取文件列表
+        files = await fs.readdir(platformFolder);
         const pdfFiles = files.filter(f => f.endsWith('.pdf') && !f.includes('merged'));
         const imageFiles = files.filter(f =>
             f.toLowerCase().endsWith('.png') ||
@@ -93,7 +119,7 @@ class SearchCoordinator {
 
         if (totalFiles === 0) {
             console.log(`[Coordinator] ${platform}: 没有文件需要合并`);
-            return null;
+            return { path: null, count: 0 };
         }
 
         console.log(`[Coordinator] ${platform}: 找到 ${pdfFiles.length} 个PDF, ${imageFiles.length} 个图片`);
@@ -102,7 +128,7 @@ class SearchCoordinator {
         if (pdfFiles.length === 1 && imageFiles.length === 0) {
             const singlePdfPath = path.join(platformFolder, pdfFiles[0]);
             console.log(`[Coordinator] ${platform}: 只有一个PDF，无需合并: ${singlePdfPath}`);
-            return singlePdfPath;
+            return { path: singlePdfPath, count: 1 };
         }
 
         const mergedFilename = `${platform}_merged_${Date.now()}.pdf`;
@@ -167,15 +193,15 @@ class SearchCoordinator {
             await fs.writeFile(mergedPath, mergedPdfBytes);
 
             console.log(`[Coordinator] 文件合并完成: ${mergedPath} (共${mergedPdf.getPageCount()}页)`);
-            return mergedPath;
+            return { path: mergedPath, count: totalFiles };
 
         } catch (error) {
             console.error(`[Coordinator] 文件合并失败:`, error.message);
             // 如果合并失败，返回第一个PDF（如果有的话）
             if (pdfFiles.length > 0) {
-                return path.join(platformFolder, pdfFiles[0]);
+                return { path: path.join(platformFolder, pdfFiles[0]), count: totalFiles };
             }
-            return null;
+            return { path: null, count: 0 };
         }
     }
 
@@ -197,16 +223,14 @@ class SearchCoordinator {
 
         // 3. 处理各平台结果
         const platformResults = {
-            atbb: null,
-            itandi: null,
-            ierube_bb: null
+            atbb: { path: null, count: 0 },
+            itandi: { path: null, count: 0 },
+            ierube_bb: { path: null, count: 0 }
         };
 
         // ATBB
         if (searchResults.atbb && searchResults.atbb.success) {
             try {
-                // 这里应该从浏览器下载PDF
-                // 暂时跳过实际下载，直接合并
                 platformResults.atbb = await this.mergePDFs('atbb', session.folders);
             } catch (error) {
                 console.error('[Coordinator] ATBB PDF处理失败:', error.message);
@@ -241,17 +265,20 @@ class SearchCoordinator {
             platforms: {
                 atbb: {
                     success: searchResults.atbb?.success || false,
-                    mergedPdf: platformResults.atbb,
+                    mergedPdf: platformResults.atbb.path,
+                    count: platformResults.atbb.count,
                     url: searchResults.atbb?.resultUrl
                 },
                 itandi: {
                     success: searchResults.itandi?.success || false,
-                    mergedPdf: platformResults.itandi,
+                    mergedPdf: platformResults.itandi.path,
+                    count: platformResults.itandi.count,
                     url: searchResults.itandi?.resultUrl
                 },
                 ierube_bb: {
                     success: searchResults.ierube_bb?.success || false,
-                    mergedPdf: platformResults.ierube_bb,
+                    mergedPdf: platformResults.ierube_bb.path,
+                    count: platformResults.ierube_bb.count,
                     url: searchResults.ierube_bb?.resultUrl
                 }
             }
