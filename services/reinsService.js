@@ -157,7 +157,7 @@ ${JSON.stringify(context, null, 2)}
   async initBrowser() {
     if (!this.browser) {
       const options = {
-        headless: process.env.HEADLESS !== 'false',
+        headless: false,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
