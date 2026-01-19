@@ -44,6 +44,8 @@
         }
         .user-input:focus { outline: none; border-color: #764ba2; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3); }
         .user-input::placeholder { color: #aaa; }
+        .agent-notes { border-color: #27ae60; min-height: 120px; }
+        .agent-notes:focus { border-color: #1e8449; box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.2); }
 
         .hint { font-size: 0.85em; color: #888; margin-top: 8px; line-height: 1.6; }
 
@@ -102,6 +104,22 @@
             </div>
 
             <div class="form-section">
+                <label for="agentNotes">
+                    担当者コメント <span class="optional">（任意）</span>
+                </label>
+                <textarea class="user-input agent-notes" id="agentNotes" placeholder="例：
+・お客様は静かな環境を希望されています
+・駅から少し遠くても広さを重視
+・予算に余裕があれば新築も検討可
+・ペットは小型犬1匹
+・在宅勤務が多いため日当たり重視"></textarea>
+                <p class="hint">
+                    <strong>担当者の視点：</strong>お客様との会話で得た情報や、条件の優先度、
+                    特記事項などを入力してください。AIがより適切な検索条件を提案します。
+                </p>
+            </div>
+
+            <div class="form-section">
                 <label for="mbtiSelect">
                     住まいMBTIタイプ <span class="optional">（任意）</span>
                 </label>
@@ -152,6 +170,7 @@
 
         document.getElementById('searchButton').addEventListener('click', async () => {
             const userRequirements = document.getElementById('userRequirements').value.trim();
+            const agentNotes = document.getElementById('agentNotes').value.trim();
 
             if (!userRequirements) {
                 showError('希望条件を入力してください');
@@ -169,7 +188,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         typeId: typeId,
-                        userRequirements: userRequirements
+                        userRequirements: userRequirements,
+                        agentNotes: agentNotes
                     })
                 });
 

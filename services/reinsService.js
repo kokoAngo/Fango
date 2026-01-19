@@ -315,7 +315,7 @@ ${JSON.stringify(context, null, 2)}
    * select要素を使用した多段選択に対応
    * フロー: 地方 → 都道府県 → 次へ → 地域区分 → 市区町村 → 次へ → 詳細地点 → 町丁目 → 決定
    */
-  async selectLocationViaGuide(prefecture, cities) {
+  async selectLocationViaGuide(prefecture, cities, detail = null) {
     try {
       // 分析フェーズ
       const { normalizedPref, city, path } = this.analyzeLocationRequirements(prefecture, cities);
@@ -497,9 +497,12 @@ ${JSON.stringify(context, null, 2)}
       await new Promise(resolve => setTimeout(resolve, 1500));
       await this.page.screenshot({ path: 'debug-location-guide-6.png' });
 
-      // Step 8: 町丁目を選択（2番目のselect - 全域や具体的な丁目）
-      console.log('  [Step 8] 町丁目を選択: 全域（優先）');
-      const choSelected = await this.selectChoFromDropdown(1);
+      // Step 8: 町丁目を選択（2番目のselect - AIに選んでもらう）
+      console.log('  [Step 8] 町丁目を選択:');
+      console.log('           詳細地名ヒント: ' + (detail || '(なし)'));
+      const choSelected = detail
+        ? await this.selectChoWithAI(1, detail, city)
+        : await this.selectChoFromDropdown(1);
       console.log('           → ' + (choSelected ? '✓ 成功' : '✗ 失敗'));
       await new Promise(resolve => setTimeout(resolve, 1500));
       await this.page.screenshot({ path: 'debug-location-guide-7.png' });
@@ -1037,6 +1040,126 @@ ${JSON.stringify(context, null, 2)}
   }
 
   /**
+   * AI を使用して町丁目を選択
+   * @param {number} selectIndex - select要素のインデックス
+   * @param {string} detailHint - ユーザーが指定した詳細地名（例: "大岡山"）
+   * @param {string} city - 市区町村名
+   */
+  async selectChoWithAI(selectIndex, detailHint, city) {
+    // まず選択肢を取得
+    const optionsData = await this.page.evaluate((index) => {
+      const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"], .modal');
+      const container = modal || document;
+      const selects = container.querySelectorAll('select.p-listbox-input, select.custom-select, select');
+
+      if (selects.length <= index) {
+        return { found: false, error: 'select not found' };
+      }
+
+      const select = selects[index];
+      const options = Array.from(select.options).map((o, i) => ({
+        index: i,
+        value: o.value,
+        text: o.text.trim(),
+        disabled: o.disabled
+      })).filter(o => !o.disabled && o.text);
+
+      return { found: true, options, selectId: select.id };
+    }, selectIndex);
+
+    if (!optionsData.found || !optionsData.options || optionsData.options.length === 0) {
+      console.log('  ⚠ 町丁目の選択肢が取得できません');
+      return this.selectChoFromDropdown(selectIndex);
+    }
+
+    // オプションをログに表示
+    console.log('           【町丁目の選択肢】 (' + optionsData.options.length + '件):');
+    optionsData.options.slice(0, 20).forEach((opt, i) => {
+      console.log('             [' + i + '] ' + opt.text);
+    });
+    if (optionsData.options.length > 20) {
+      console.log('             ... 他 ' + (optionsData.options.length - 20) + ' 件');
+    }
+
+    // detailHint がない場合、または「全域」がある場合はデフォルト処理
+    if (!detailHint || detailHint.trim() === '') {
+      console.log('           → 詳細地名未指定、デフォルト選択');
+      return this.selectChoFromDropdown(selectIndex);
+    }
+
+    // AI に選択を依頼
+    const client = this.initOpenAI();
+    if (!client) {
+      console.log('           → OpenAI未設定、デフォルト選択');
+      return this.selectChoFromDropdown(selectIndex);
+    }
+
+    try {
+      console.log('           → 🤖 AI に最適な町丁目を選択してもらいます...');
+
+      const optionTexts = optionsData.options.map(o => o.text);
+      const prompt = `不動産検索で「${city}」の町丁目を選択しています。
+
+ユーザーの希望する詳細地名: 「${detailHint}」
+
+利用可能な選択肢:
+${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
+
+上記の選択肢から、ユーザーの希望に最も近いものを1つ選んでください。
+「全域」は広く検索できるので、具体的な町名がマッチしない場合は「全域」を選んでください。
+
+回答はJSON形式で:
+{"selectedIndex": 数字, "selectedText": "選択した項目名", "reason": "選択理由"}`;
+
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 200,
+        temperature: 0.1,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const content = response.choices[0].message.content.trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+
+      if (jsonMatch) {
+        const aiChoice = JSON.parse(jsonMatch[0]);
+        console.log('           → AI選択: "' + aiChoice.selectedText + '" (' + aiChoice.reason + ')');
+
+        // AI が選んだ選択肢を実際に選択
+        const selectedOpt = optionsData.options.find(o =>
+          o.text === aiChoice.selectedText || o.index === aiChoice.selectedIndex
+        );
+
+        if (selectedOpt) {
+          const selectResult = await this.page.evaluate((index, value) => {
+            const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"], .modal');
+            const container = modal || document;
+            const selects = container.querySelectorAll('select.p-listbox-input, select.custom-select, select');
+            if (selects.length <= index) return false;
+
+            const select = selects[index];
+            select.value = value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+          }, selectIndex, selectedOpt.value);
+
+          if (selectResult) {
+            console.log('  ✓ 町丁目選択 [AI選択]: "' + selectedOpt.text + '"');
+            return true;
+          }
+        }
+      }
+    } catch (error) {
+      console.log('           → AI選択エラー:', error.message);
+    }
+
+    // フォールバック
+    console.log('           → AIフォールバック、デフォルト選択');
+    return this.selectChoFromDropdown(selectIndex);
+  }
+
+  /**
    * モーダル内のselect要素の最初のオプションを選択
    * 選択前に全オプションを遍歴して表示
    * @param {number} selectIndex - モーダル内のselect要素のインデックス（0始まり）
@@ -1452,9 +1575,17 @@ ${JSON.stringify(context, null, 2)}
 
       const prefecture = userRequirements.prefecture || textInputs['__BVID__325'] || '東京都';
       const cities = userRequirements.cities || [];
+      // detail を locations から取得（最初の location の detail を使用）
+      const detail = userRequirements.locations && userRequirements.locations.length > 0
+        ? userRequirements.locations[0].detail
+        : null;
+
+      console.log('[fillSearchConditions] detail読み取り:');
+      console.log('  userRequirements.locations:', JSON.stringify(userRequirements.locations, null, 2));
+      console.log('  detail:', detail);
 
       if (prefecture || cities.length > 0) {
-        const locationSelected = await this.selectLocationViaGuide(prefecture, cities);
+        const locationSelected = await this.selectLocationViaGuide(prefecture, cities, detail);
 
         if (!locationSelected) {
           // 入力ガイドが失敗した場合、従来のテキスト入力にフォールバック
@@ -1484,13 +1615,23 @@ ${JSON.stringify(context, null, 2)}
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // ========== 沿線・駅選択（オプション - 失敗時はスキップ） ==========
-      const line = userRequirements.line || textInputs['__BVID__376'];
+      // searchMethod が "location" の場合は沿線選択をスキップ
+      const searchMethod = userRequirements.searchMethod || 'location';
+      const shouldSelectLine = searchMethod === 'line' || searchMethod === 'bus';
+
+      // 沿線情報を取得（searchMethod が line の場合のみ textInputs から取得）
+      const line = shouldSelectLine ? (userRequirements.line || textInputs['__BVID__376']) : userRequirements.line;
       const startStation = userRequirements.startStation;
       const endStation = userRequirements.endStation;
       const station = userRequirements.station;
       let lineSelectionSuccess = false;
 
-      if (line) {
+      // searchMethod に基づいてログを出力
+      if (searchMethod === 'location') {
+        console.log('\n【Phase 2.5】沿線・駅の選択: スキップ（所在地検索モード）');
+      }
+
+      if (line && shouldSelectLine) {
         console.log('\n【Phase 2.5】沿線・駅の選択（入力ガイド使用）');
         console.log('─'.repeat(40));
         console.log('  ※ 沿線選択は任意です。失敗時は所在地のみで検索します。');
@@ -2012,9 +2153,56 @@ ${JSON.stringify(context, null, 2)}
       let selectedCount = 0;
       const selectedPropertyIds = [];  // 選択した物件IDを保存
 
-      // 方法1: 個別のチェックボックスを選択（最大5件）
-      if (checkboxInfo.total > 0) {
-        const maxSelect = Math.min(checkboxInfo.total, 5);
+      // 方法1: 「ページ内全選択」ボタンを優先使用（高速）
+      if (pageInfo.hasSelectAllBtn) {
+        console.log('\n「ページ内全選択」ボタンを使用（高速モード）...');
+        const clicked = await this.page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const selectAllBtn = buttons.find(b => b.textContent?.includes('ページ内全選択'));
+          if (selectAllBtn) {
+            selectAllBtn.click();
+            return true;
+          }
+          return false;
+        });
+
+        if (clicked) {
+          console.log('  ✓ ページ内全選択を実行');
+          await new Promise(resolve => setTimeout(resolve, 1500));
+
+          // 全選択後に物件IDを抽出
+          const allIds = await this.page.evaluate(() => {
+            const ids = [];
+            const checkedBoxes = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
+            for (const cb of checkedBoxes) {
+              let parent = cb.parentElement;
+              for (let i = 0; i < 10 && parent; i++) {
+                const text = parent.innerText || '';
+                const idMatch = text.match(/(\d{12})/);
+                if (idMatch) {
+                  ids.push(idMatch[1]);
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+            }
+            return ids;
+          });
+
+          selectedCount = allIds.length || Math.min(pageInfo.totalCount, 100);
+          if (allIds.length > 0) {
+            selectedPropertyIds.push(...allIds);
+            console.log(`  ✓ ${allIds.length}件の物件を一括選択`);
+          } else {
+            console.log(`  ✓ 全選択完了（推定: ${selectedCount}件）`);
+          }
+        }
+      }
+
+      // 方法2: 全選択ボタンがない場合、個別のチェックボックスを選択（最大100件）
+      if (selectedCount === 0 && checkboxInfo.total > 0) {
+        console.log('\n個別選択モードを使用...');
+        const maxSelect = Math.min(checkboxInfo.total, 100);
 
         for (let i = 0; i < maxSelect; i++) {
           const selected = await this.page.evaluate((index) => {
@@ -2062,51 +2250,6 @@ ${JSON.stringify(context, null, 2)}
             }
           }
           await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      }
-
-      // 方法2: チェックボックスが見つからない場合、「ページ内全選択」ボタンを試す
-      if (selectedCount === 0 && pageInfo.hasSelectAllBtn) {
-        console.log('\n「ページ内全選択」ボタンを使用...');
-        const clicked = await this.page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button'));
-          const selectAllBtn = buttons.find(b => b.textContent?.includes('ページ内全選択'));
-          if (selectAllBtn) {
-            selectAllBtn.click();
-            return true;
-          }
-          return false;
-        });
-
-        if (clicked) {
-          console.log('  ✓ ページ内全選択を実行');
-          selectedCount = Math.min(pageInfo.totalCount, 50); // 1ページ最大50件
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // 全選択後に物件IDを抽出
-          const allIds = await this.page.evaluate(() => {
-            const ids = [];
-            const checkedBoxes = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
-            for (const cb of checkedBoxes) {
-              let parent = cb.parentElement;
-              for (let i = 0; i < 10 && parent; i++) {
-                const text = parent.innerText || '';
-                const idMatch = text.match(/(\d{12})/);
-                if (idMatch) {
-                  ids.push(idMatch[1]);
-                  break;
-                }
-                parent = parent.parentElement;
-              }
-            }
-            return ids;
-          });
-
-          if (allIds.length > 0) {
-            selectedPropertyIds.push(...allIds);
-            console.log(`  物件ID: ${allIds.length}件抽出`);
-            allIds.forEach((id, i) => console.log(`    [${i + 1}] ${id}`));
-          }
         }
       }
 
@@ -2464,6 +2607,584 @@ ${JSON.stringify(context, null, 2)}
       await this.close();
       throw error;
     }
+  }
+
+  /**
+   * 多轮搜索 - 根据多个搜索选项分别搜索，然后合并结果
+   * @param {string} username - REINS 用户名
+   * @param {string} password - REINS 密码
+   * @param {object} baseConditions - 基本搜索条件（賃料、面積、間取り等）
+   * @param {array} searchOptions - 搜索选项数组
+   * @param {object} options - 额外选项 { maxRounds: 最大搜索轮数, selectedOptions: 用户选择的选项ID数组 }
+   */
+  async searchMultipleRounds(username, password, baseConditions, searchOptions, options = {}) {
+    const maxRounds = options.maxRounds || 5;  // 最大搜索轮数
+    const selectedOptionIds = options.selectedOptions || null;  // 用户选择的选项ID
+
+    // 如果用户指定了选项，只搜索这些选项
+    let optionsToSearch = searchOptions;
+    if (selectedOptionIds && Array.isArray(selectedOptionIds)) {
+      optionsToSearch = searchOptions.filter(opt => selectedOptionIds.includes(opt.id));
+    }
+
+    // 限制搜索轮数
+    optionsToSearch = optionsToSearch.slice(0, maxRounds);
+
+    console.log('\n' + '='.repeat(60));
+    console.log('🔄 多轮検索を開始します');
+    console.log('='.repeat(60));
+    console.log('  検索オプション数:', optionsToSearch.length);
+    optionsToSearch.forEach((opt, i) => {
+      console.log(`  [${i + 1}] ${opt.description}`);
+    });
+    console.log('');
+
+    const allResults = {
+      totalRounds: optionsToSearch.length,
+      completedRounds: 0,
+      rounds: [],
+      allProperties: [],
+      allPdfFiles: [],
+      uniquePropertyIds: new Set(),
+      errors: []
+    };
+
+    try {
+      // 登录一次
+      const downloadDir = baseConditions.downloadDir || null;
+      await this.login(username, password, downloadDir);
+
+      // 对每个选项进行搜索
+      for (let i = 0; i < optionsToSearch.length; i++) {
+        const option = optionsToSearch[i];
+        console.log('\n' + '-'.repeat(50));
+        console.log(`📍 Round ${i + 1}/${optionsToSearch.length}: ${option.description}`);
+        console.log('-'.repeat(50));
+
+        try {
+          // 构建此轮的搜索条件
+          const roundConditions = this.buildConditionsFromOption(baseConditions, option);
+
+          // 导航到搜索页面
+          await this.navigateToRentalSearch();
+
+          // 填充并执行搜索
+          await this.fillSearchConditions(roundConditions);
+          await this.executeSearch(roundConditions);
+
+          // 提取结果
+          const result = await this.extractProperties();
+
+          // 记录此轮结果
+          const roundResult = {
+            round: i + 1,
+            option: option,
+            success: true,
+            propertiesCount: result.properties ? result.properties.length : 0,
+            pdfFiles: result.pdfFiles || [],
+            properties: result.properties || []
+          };
+
+          allResults.rounds.push(roundResult);
+          allResults.completedRounds++;
+
+          // 合并结果（去重）
+          if (result.properties) {
+            for (const prop of result.properties) {
+              if (prop.propertyNo && !allResults.uniquePropertyIds.has(prop.propertyNo)) {
+                allResults.uniquePropertyIds.add(prop.propertyNo);
+                allResults.allProperties.push({
+                  ...prop,
+                  foundInRound: i + 1,
+                  searchOption: option.description
+                });
+              }
+            }
+          }
+
+          if (result.pdfFiles) {
+            allResults.allPdfFiles.push(...result.pdfFiles);
+          }
+
+          console.log(`  ✓ 検索完了: ${roundResult.propertiesCount}件の物件を発見`);
+
+        } catch (error) {
+          console.error(`  ✗ Round ${i + 1} エラー:`, error.message);
+          allResults.rounds.push({
+            round: i + 1,
+            option: option,
+            success: false,
+            error: error.message
+          });
+          allResults.errors.push({
+            round: i + 1,
+            option: option.description,
+            error: error.message
+          });
+        }
+
+        // 轮次之间等待
+        if (i < optionsToSearch.length - 1) {
+          console.log('  次の検索まで待機中...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      await this.close();
+
+      // 结果摘要
+      console.log('\n' + '='.repeat(60));
+      console.log('📊 多轮検索結果サマリー');
+      console.log('='.repeat(60));
+      console.log('  完了ラウンド:', allResults.completedRounds, '/', allResults.totalRounds);
+      console.log('  発見物件数（重複除く）:', allResults.allProperties.length);
+      console.log('  PDFファイル数:', allResults.allPdfFiles.length);
+      if (allResults.errors.length > 0) {
+        console.log('  エラー数:', allResults.errors.length);
+      }
+      console.log('');
+
+      return {
+        type: 'multiRoundSearch',
+        totalRounds: allResults.totalRounds,
+        completedRounds: allResults.completedRounds,
+        rounds: allResults.rounds,
+        properties: allResults.allProperties,
+        pdfFiles: allResults.allPdfFiles,
+        uniquePropertyCount: allResults.allProperties.length,
+        errors: allResults.errors
+      };
+
+    } catch (error) {
+      await this.close();
+      throw error;
+    }
+  }
+
+  /**
+   * 并发搜索 - 同时启动多个浏览器实例进行搜索，然后合并结果
+   * @param {string} username - REINS 用户名
+   * @param {string} password - REINS 密码
+   * @param {object} baseConditions - 基本搜索条件
+   * @param {array} searchOptions - 搜索选项数组
+   * @param {object} options - 额外选项 { maxConcurrent: 最大并发数, selectedOptions: 用户选择的选项ID数组 }
+   */
+  async searchConcurrent(username, password, baseConditions, searchOptions, options = {}) {
+    const maxConcurrent = options.maxConcurrent || 3;  // 最大并发数（避免资源占用过多）
+    const selectedOptionIds = options.selectedOptions || null;
+
+    // 如果用户指定了选项，只搜索这些选项
+    let optionsToSearch = searchOptions;
+    if (selectedOptionIds && Array.isArray(selectedOptionIds)) {
+      optionsToSearch = searchOptions.filter(opt => selectedOptionIds.includes(opt.id));
+    }
+
+    // 限制并发数
+    optionsToSearch = optionsToSearch.slice(0, maxConcurrent);
+
+    console.log('\n' + '='.repeat(60));
+    console.log('⚡ 並列検索を開始します');
+    console.log('='.repeat(60));
+    console.log('  検索オプション数:', optionsToSearch.length);
+    console.log('  最大並列数:', maxConcurrent);
+    optionsToSearch.forEach((opt, i) => {
+      console.log(`  [${i + 1}] ${opt.description}`);
+    });
+    console.log('');
+
+    const startTime = Date.now();
+
+    // 创建并发搜索任务
+    const searchTasks = optionsToSearch.map((option, index) => {
+      return this.runSingleSearch(username, password, baseConditions, option, index + 1);
+    });
+
+    // 并发执行所有搜索
+    console.log('  🚀 並列検索を実行中...\n');
+    const results = await Promise.allSettled(searchTasks);
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(1);
+
+    // 收集和合并结果
+    const allResults = {
+      totalRounds: optionsToSearch.length,
+      completedRounds: 0,
+      rounds: [],
+      allProperties: [],
+      allPdfFiles: [],
+      uniquePropertyIds: new Set(),
+      errors: []
+    };
+
+    results.forEach((result, index) => {
+      const option = optionsToSearch[index];
+
+      if (result.status === 'fulfilled' && result.value) {
+        const searchResult = result.value;
+        allResults.completedRounds++;
+
+        const roundResult = {
+          round: index + 1,
+          option: option,
+          success: true,
+          propertiesCount: searchResult.properties?.length || 0,
+          pdfFiles: searchResult.pdfFiles || [],
+          pdfPath: searchResult.pdfPath || null,
+          properties: searchResult.properties || [],
+          propertyIds: searchResult.propertyIds || []
+        };
+        allResults.rounds.push(roundResult);
+
+        // 合并 PDF 文件
+        if (searchResult.pdfPath) {
+          allResults.allPdfFiles.push(searchResult.pdfPath);
+        }
+        if (searchResult.pdfFiles) {
+          allResults.allPdfFiles.push(...searchResult.pdfFiles);
+        }
+
+        // 合并物件（去重）
+        if (searchResult.properties) {
+          for (const prop of searchResult.properties) {
+            const propId = prop.propertyNo || prop.propertyId;
+            if (propId && !allResults.uniquePropertyIds.has(propId)) {
+              allResults.uniquePropertyIds.add(propId);
+              allResults.allProperties.push({
+                ...prop,
+                foundInRound: index + 1,
+                searchOption: option.description
+              });
+            }
+          }
+        }
+
+        // 也用 propertyIds 去重
+        if (searchResult.propertyIds) {
+          for (const propId of searchResult.propertyIds) {
+            if (!allResults.uniquePropertyIds.has(propId)) {
+              allResults.uniquePropertyIds.add(propId);
+            }
+          }
+        }
+
+        console.log(`  ✓ [${index + 1}] ${option.description}: ${roundResult.propertiesCount}件`);
+
+      } else {
+        const errorMsg = result.reason?.message || 'Unknown error';
+        allResults.rounds.push({
+          round: index + 1,
+          option: option,
+          success: false,
+          error: errorMsg
+        });
+        allResults.errors.push({
+          round: index + 1,
+          option: option.description,
+          error: errorMsg
+        });
+        console.log(`  ✗ [${index + 1}] ${option.description}: エラー - ${errorMsg}`);
+      }
+    });
+
+    // 结果摘要
+    console.log('\n' + '='.repeat(60));
+    console.log('📊 並列検索結果サマリー');
+    console.log('='.repeat(60));
+    console.log('  実行時間:', duration, '秒');
+    console.log('  完了:', allResults.completedRounds, '/', allResults.totalRounds);
+    console.log('  発見物件数（重複除く）:', allResults.uniquePropertyIds.size);
+    console.log('  PDFファイル数:', allResults.allPdfFiles.length);
+    if (allResults.errors.length > 0) {
+      console.log('  エラー数:', allResults.errors.length);
+    }
+    console.log('');
+
+    return {
+      type: 'concurrentSearch',
+      totalRounds: allResults.totalRounds,
+      completedRounds: allResults.completedRounds,
+      duration: parseFloat(duration),
+      rounds: allResults.rounds,
+      properties: allResults.allProperties,
+      pdfFiles: allResults.allPdfFiles,
+      uniquePropertyCount: allResults.uniquePropertyIds.size,
+      errors: allResults.errors
+    };
+  }
+
+  /**
+   * 运行单个搜索（独立的浏览器实例）
+   */
+  async runSingleSearch(username, password, baseConditions, option, roundNumber) {
+    let browser = null;
+    let page = null;
+
+    try {
+      console.log(`  [${roundNumber}] 🌐 ブラウザを起動中: ${option.description}`);
+
+      // 创建独立的浏览器实例
+      const launchOptions = {
+        headless: false,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--allow-running-insecure-content',
+          '--ignore-certificate-errors'
+        ]
+      };
+
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+
+      browser = await puppeteer.launch(launchOptions);
+      page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+
+      // 配置下载目录
+      const downloadDir = baseConditions.downloadDir || this.ensureDownloadDir();
+      const client = await page.target().createCDPSession();
+      await client.send('Page.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: downloadDir
+      });
+
+      // 登录
+      await page.goto(REINS_LOGIN_URL, { waitUntil: 'networkidle0', timeout: TIMEOUT });
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      await page.waitForSelector('input', { timeout: TIMEOUT });
+
+      await page.evaluate((user, pass) => {
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+          if (input.type === 'text') {
+            input.value = user;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          if (input.type === 'password') {
+            input.value = pass;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => { if (!cb.checked) cb.click(); });
+      }, username, password);
+
+      await page.evaluate(() => {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          if (btn.textContent?.includes('ログイン')) {
+            btn.click();
+            break;
+          }
+        }
+      });
+
+      await Promise.race([
+        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }),
+        new Promise(resolve => setTimeout(resolve, 10000))
+      ]);
+
+      console.log(`  [${roundNumber}] ✓ ログイン完了`);
+
+      // 保存原始的 this.page，用于搜索操作
+      const originalPage = this.page;
+      const originalBrowser = this.browser;
+      this.page = page;
+      this.browser = browser;
+
+      try {
+        // 构建搜索条件
+        const conditions = this.buildConditionsFromOption(baseConditions, option);
+
+        // 导航到搜索页面
+        await this.navigateToRentalSearch();
+
+        // 填充并执行搜索
+        await this.fillSearchConditions(conditions);
+        await this.executeSearch(conditions);
+
+        // 提取结果
+        const result = await this.extractProperties();
+
+        console.log(`  [${roundNumber}] ✓ 検索完了: ${option.description}`);
+
+        return result;
+
+      } finally {
+        // 恢复原始的 page 和 browser
+        this.page = originalPage;
+        this.browser = originalBrowser;
+      }
+
+    } catch (error) {
+      console.error(`  [${roundNumber}] ✗ エラー: ${error.message}`);
+      throw error;
+
+    } finally {
+      // 关闭此搜索的浏览器实例
+      if (page) await page.close().catch(() => {});
+      if (browser) await browser.close().catch(() => {});
+    }
+  }
+
+  /**
+   * 根据搜索选项构建完整的搜索条件
+   */
+  buildConditionsFromOption(baseConditions, option) {
+    console.log('\n[buildConditionsFromOption] 入力オプション:');
+    console.log('  option.city:', option.city);
+    console.log('  option.town:', option.town);
+    console.log('  option.detail:', option.detail);
+
+    const conditions = { ...baseConditions };
+
+    // 设置搜索方法
+    conditions.searchMethod = option.searchMethod;
+
+    if (option.searchMethod === 'location') {
+      // 所在地搜索
+      conditions.prefecture = option.prefecture;
+      conditions.cities = option.city ? [option.city] : [];
+      // 清除沿线信息
+      conditions.line = null;
+      conditions.station = null;
+    } else if (option.searchMethod === 'line') {
+      // 沿线搜索
+      conditions.prefecture = option.prefecture;
+      conditions.line = option.line;
+      conditions.station = option.station;
+      conditions.stationTo = option.stationTo || null;
+      conditions.walkMinutes = option.walkMinutes || null;
+      // 清除所在地信息
+      conditions.cities = [];
+    }
+
+    // 构建 reinsFields（用于 fillSearchConditions）
+    const textInputs = {};
+
+    // 賃料（万円）
+    if (baseConditions.rentMin) {
+      textInputs['__BVID__452'] = baseConditions.rentMin.toString();
+    }
+    if (baseConditions.rentMax) {
+      textInputs['__BVID__454'] = baseConditions.rentMax.toString();
+    }
+
+    // 面積（㎡）
+    if (baseConditions.areaMin) {
+      textInputs['__BVID__481'] = baseConditions.areaMin.toString();
+    }
+    if (baseConditions.areaMax) {
+      textInputs['__BVID__483'] = baseConditions.areaMax.toString();
+    }
+
+    // 階数
+    if (baseConditions.floorMin) {
+      textInputs['__BVID__520'] = baseConditions.floorMin.toString();
+    }
+
+    // 徒歩分数
+    if (option.walkMinutes) {
+      textInputs['__BVID__385'] = option.walkMinutes.toString();
+    }
+
+    // 构建 selects
+    const selects = {};
+
+    // 物件種別
+    if (baseConditions.propertyType) {
+      selects['__BVID__293'] = baseConditions.propertyType;
+    }
+
+    // 向き
+    if (baseConditions.direction) {
+      selects['__BVID__525'] = baseConditions.direction;
+    }
+
+    // 駐車場
+    if (baseConditions.parking) {
+      selects['__BVID__542'] = baseConditions.parking;
+    }
+
+    // 构建 checkboxes
+    const checkboxes = {};
+
+    // 新築
+    if (baseConditions.isNew) {
+      checkboxes['__BVID__307'] = true;
+    }
+
+    // 角部屋
+    if (baseConditions.corner) {
+      checkboxes['__BVID__492'] = true;
+    }
+
+    // 间取りチェックボックス
+    const layoutMapping = {
+      'ワンルーム': '__BVID__497',
+      '1R': '__BVID__497',
+      'K': '__BVID__499',
+      '1K': '__BVID__499',
+      '2K': '__BVID__499',
+      'DK': '__BVID__501',
+      '1DK': '__BVID__501',
+      '2DK': '__BVID__501',
+      '3DK': '__BVID__501',
+      'LK': '__BVID__503',
+      '1LK': '__BVID__503',
+      '2LK': '__BVID__503',
+      'LDK': '__BVID__505',
+      '1LDK': '__BVID__505',
+      '2LDK': '__BVID__505',
+      '3LDK': '__BVID__505',
+      '4LDK': '__BVID__505'
+    };
+
+    if (baseConditions.layouts && Array.isArray(baseConditions.layouts)) {
+      for (const layout of baseConditions.layouts) {
+        const checkboxId = layoutMapping[layout];
+        if (checkboxId) {
+          checkboxes[checkboxId] = true;
+        }
+      }
+    }
+
+    // 设置 reinsFields
+    conditions.reinsFields = {
+      textInputs,
+      selects,
+      checkboxes,
+      keywords: baseConditions.keywords || []
+    };
+
+    // 设置 userRequirements（包含町丁目信息）
+    conditions.userRequirements = {
+      prefecture: conditions.prefecture,
+      cities: conditions.cities,
+      searchMethod: conditions.searchMethod,
+      line: conditions.line,
+      station: conditions.station,
+      stationTo: conditions.stationTo,
+      walkMinutes: conditions.walkMinutes,
+      locations: option.city ? [{
+        prefecture: option.prefecture,
+        city: option.city,
+        town: option.town || null,
+        detail: option.detail || option.town || null  // town を detail として使用
+      }] : [],
+      equipment: baseConditions.equipment || [],
+      petAllowed: baseConditions.petAllowed || false
+    };
+
+    console.log('[buildConditionsFromOption] 設定された userRequirements.locations:');
+    console.log('  locations:', JSON.stringify(conditions.userRequirements.locations, null, 2));
+
+    return conditions;
   }
 
   async close() {

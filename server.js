@@ -37,7 +37,7 @@ app.get('/api/mbti-types', (req, res) => {
 // Search properties based on user requirements (primary) and optional MBTI type
 app.post('/api/search', async (req, res) => {
   try {
-    const { typeId, userRequirements } = req.body;
+    const { typeId, userRequirements, agentNotes } = req.body;
     const username = process.env.REINS_USERNAME;
     const password = process.env.REINS_PASSWORD;
 
@@ -56,9 +56,12 @@ app.post('/api/search', async (req, res) => {
 
     console.log('='.repeat(60));
     console.log('User requirements:', userRequirements);
+    if (agentNotes) {
+      console.log('Agent notes:', agentNotes);
+    }
 
-    // AI で需求を解析（位置情報も含めて一括解析）
-    let parsedRequirements = await aiRequirementsParser.parse(userRequirements);
+    // AI で需求を解析（位置情報も含めて一括解析、担当者コメントも考慮）
+    let parsedRequirements = await aiRequirementsParser.parse(userRequirements, {}, agentNotes || '');
     let reinsFields;
 
     if (parsedRequirements) {
@@ -72,9 +75,15 @@ app.post('/api/search', async (req, res) => {
       reinsFields = requirementsParser.toReinsFields(parsedRequirements);
     }
 
-    // 複数位置オプションをログ出力
+    // 複数検索オプションをログ出力
+    const searchOptions = parsedRequirements.searchOptions || [];
     const locations = parsedRequirements.locations || [];
     console.log('\n=== 解析結果 ===');
+    console.log('【検索オプション】', searchOptions.length, '件');
+    searchOptions.forEach((opt, i) => {
+      const townInfo = opt.town ? ` [町丁目: ${opt.town}]` : '';
+      console.log(`  [${opt.id}] ${opt.description} (${opt.searchMethod})${townInfo}`);
+    });
     console.log('【位置情報】候補地:', locations.length, '件');
     locations.forEach((loc, i) => {
       console.log(`  [${i + 1}] ${loc.prefecture} ${loc.city}${loc.detail ? ' (' + loc.detail + ')' : ''}`);
@@ -110,8 +119,8 @@ app.post('/api/search', async (req, res) => {
       }
     }
 
-    // 複数位置で順次検索（5件以上見つかるまで、最大10回まで）
-    const MIN_PROPERTIES = 5;
+    // 複数位置で順次検索（100件以上見つかるまで、最大10回まで）
+    const MIN_PROPERTIES = 100;
     const MAX_SEARCH_ATTEMPTS = 10;
     let allProperties = [];
     let searchedLocations = [];
@@ -122,10 +131,12 @@ app.post('/api/search', async (req, res) => {
 
     // 検索専用フォルダを作成（時間+キーワード）
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    // キーワードを生成（最初の位置または条件から）
-    const keyword = locations.length > 0
-      ? `${locations[0].prefecture}_${locations[0].city}`.replace(/[\\/:*?"<>|]/g, '_')
-      : (parsedRequirements.station || parsedRequirements.line || 'search').replace(/[\\/:*?"<>|]/g, '_');
+    // キーワードを生成（最初の検索オプションまたは位置から）
+    const keyword = searchOptions.length > 0
+      ? searchOptions[0].description.substring(0, 20).replace(/[\\/:*?"<>|]/g, '_')
+      : locations.length > 0
+        ? `${locations[0].prefecture}_${locations[0].city}`.replace(/[\\/:*?"<>|]/g, '_')
+        : (parsedRequirements.station || parsedRequirements.line || 'search').replace(/[\\/:*?"<>|]/g, '_');
     const searchFolderName = `${timestamp}_${keyword}`;
     const searchDownloadDir = path.join(DOWNLOADS_DIR, searchFolderName);
 
@@ -136,25 +147,50 @@ app.post('/api/search', async (req, res) => {
     fs.mkdirSync(searchDownloadDir, { recursive: true });
     console.log(`検索専用フォルダを作成: ${searchFolderName}`);
 
-    for (let i = 0; i < locations.length && allProperties.length < MIN_PROPERTIES && searchAttempts < MAX_SEARCH_ATTEMPTS; i++) {
-      searchAttempts++;
-      const location = locations[i];
-      console.log(`\n【検索 ${searchAttempts}/${MAX_SEARCH_ATTEMPTS}】${location.prefecture} ${location.city}`);
+    // searchOptions を使用して多轮検索（優先）
+    const itemsToSearch = searchOptions.length > 0 ? searchOptions : locations.map((loc, i) => ({
+      id: i + 1,
+      description: `${loc.prefecture} ${loc.city}で所在地検索`,
+      searchMethod: 'location',
+      prefecture: loc.prefecture,
+      city: loc.city,
+      detail: loc.detail
+    }));
 
-      // この位置用の条件を作成
-      const locationRequirements = {
+    console.log(`\n🔄 検索を開始: ${itemsToSearch.length}件の検索オプション`);
+
+    for (let i = 0; i < itemsToSearch.length && totalPdfCount < MIN_PROPERTIES && searchAttempts < MAX_SEARCH_ATTEMPTS; i++) {
+      searchAttempts++;
+      const option = itemsToSearch[i];
+      console.log(`\n【検索 ${searchAttempts}/${MAX_SEARCH_ATTEMPTS}】${option.description}`);
+
+      // この検索オプション用の条件を作成
+      // 重要: locations を現在の option の情報で上書きする（町丁目を含む）
+      const optionRequirements = {
         ...parsedRequirements,
-        prefecture: location.prefecture,
-        cities: [location.city]
+        searchMethod: option.searchMethod,
+        prefecture: option.prefecture,
+        cities: option.city ? [option.city] : [],
+        // locations を現在の option 用に設定（town を detail として使用）
+        locations: option.city ? [{
+          prefecture: option.prefecture,
+          city: option.city,
+          town: option.town || null,
+          detail: option.town || option.detail || null  // town を detail として使用
+        }] : [],
+        line: option.line || null,
+        station: option.station || null,
+        stationTo: option.stationTo || null,
+        walkMinutes: option.walkMinutes || parsedRequirements.walkMinutes || null
       };
 
-      const locationReinsFields = aiRequirementsParser.toReinsFields(locationRequirements);
+      const optionReinsFields = aiRequirementsParser.toReinsFields(optionRequirements);
 
       const searchConditions = {
         ...mbtiConditions,
-        userRequirements: locationRequirements,
-        reinsFields: locationReinsFields,
-        downloadDir: searchDownloadDir  // 検索専用フォルダを指定
+        userRequirements: optionRequirements,
+        reinsFields: optionReinsFields,
+        downloadDir: searchDownloadDir
       };
 
       try {
@@ -170,15 +206,16 @@ app.post('/api/search', async (req, res) => {
           console.log(`  → PDF生成成功: ${path.basename(result.pdfPath)}`);
           allPdfPaths.push(result.pdfPath);
           totalPdfCount += result.count || 1;
-          searchedLocations.push(location);
+          searchedLocations.push({ option: option.description, ...option });
 
-          // 物件IDを収集
+          // 物件IDを収集（重複除外）
           if (result.propertyIds && result.propertyIds.length > 0) {
-            allPropertyIds.push(...result.propertyIds);
-            console.log(`  → 物件ID: ${result.propertyIds.length}件収集`);
+            const newIds = result.propertyIds.filter(id => !allPropertyIds.includes(id));
+            allPropertyIds.push(...newIds);
+            console.log(`  → 物件ID: ${newIds.length}件収集 (重複除外後)`);
           }
 
-          // 5件以上収集したら終了
+          // 100件以上収集したら終了
           if (totalPdfCount >= MIN_PROPERTIES) {
             console.log(`\n${totalPdfCount}件以上のPDFを収集したため検索終了`);
             break;
@@ -188,10 +225,10 @@ app.post('/api/search', async (req, res) => {
           const properties = result.properties;
           if (properties.length > 0) {
             properties.forEach(p => {
-              p.searchLocation = `${location.prefecture} ${location.city}`;
+              p.searchOption = option.description;
             });
             allProperties.push(...properties);
-            searchedLocations.push(location);
+            searchedLocations.push({ option: option.description, ...option });
             console.log(`  → ${properties.length}件 見つかりました (累計: ${allProperties.length}件)`);
           } else {
             console.log(`  → 0件`);
@@ -200,10 +237,10 @@ app.post('/api/search', async (req, res) => {
           // 旧形式（配列）
           if (result.length > 0) {
             result.forEach(p => {
-              p.searchLocation = `${location.prefecture} ${location.city}`;
+              p.searchOption = option.description;
             });
             allProperties.push(...result);
-            searchedLocations.push(location);
+            searchedLocations.push({ option: option.description, ...option });
             console.log(`  → ${result.length}件 見つかりました (累計: ${allProperties.length}件)`);
           } else {
             console.log(`  → 0件`);
@@ -215,7 +252,7 @@ app.post('/api/search', async (req, res) => {
         console.log(`  → 検索エラー: ${err.message}`);
       }
 
-      // 5件以上見つかったら終了
+      // 100件以上見つかったら終了
       if (allProperties.length >= MIN_PROPERTIES || totalPdfCount >= MIN_PROPERTIES) {
         console.log(`\n${MIN_PROPERTIES}件以上見つかったため検索終了`);
         break;
@@ -307,6 +344,318 @@ app.post('/api/search', async (req, res) => {
     console.error('Search error:', error);
     res.status(500).json({
       error: 'Failed to search properties',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * 解析用户需求，返回多个搜索选项供用户选择
+ * POST /api/parse-requirements
+ */
+app.post('/api/parse-requirements', async (req, res) => {
+  try {
+    const { userRequirements, context, agentNotes } = req.body;
+
+    if (!userRequirements || !userRequirements.trim()) {
+      return res.status(400).json({
+        error: '希望条件を入力してください'
+      });
+    }
+
+    console.log('='.repeat(60));
+    console.log('🔍 AI解析リクエスト');
+    console.log('='.repeat(60));
+    console.log('User requirements:', userRequirements);
+    if (agentNotes) {
+      console.log('Agent notes:', agentNotes);
+    }
+
+    // AI で需求を解析（担当者コメントも考慮）
+    const parsedRequirements = await aiRequirementsParser.parse(userRequirements, context || {}, agentNotes || '');
+
+    if (!parsedRequirements) {
+      return res.status(400).json({
+        error: '解析に失敗しました。もう少し具体的な条件を入力してください。'
+      });
+    }
+
+    // 如果需要更多信息
+    if (parsedRequirements.needsMoreInfo) {
+      return res.json({
+        success: true,
+        needsMoreInfo: true,
+        missingFields: parsedRequirements.missingFields,
+        suggestedQuestions: parsedRequirements.suggestedQuestions,
+        partialResult: parsedRequirements.partialResult
+      });
+    }
+
+    // 返回解析结果，包含searchOptions
+    console.log('\n【解析結果】');
+    console.log('  searchOptions:', parsedRequirements.searchOptions?.length || 0, '件');
+    if (parsedRequirements.searchOptions) {
+      parsedRequirements.searchOptions.forEach((opt, i) => {
+        console.log(`    [${opt.id}] ${opt.description} (${opt.searchMethod})`);
+      });
+    }
+
+    res.json({
+      success: true,
+      needsMoreInfo: false,
+      parsedRequirements: parsedRequirements,
+      searchOptions: parsedRequirements.searchOptions || []
+    });
+
+  } catch (error) {
+    console.error('Parse error:', error);
+    res.status(500).json({
+      error: '解析に失敗しました',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * 多轮搜索 - 根据用户选择的搜索选项进行多轮搜索
+ * POST /api/search-multi-round
+ */
+app.post('/api/search-multi-round', async (req, res) => {
+  try {
+    const { parsedRequirements, selectedOptionIds, maxRounds } = req.body;
+    const username = process.env.REINS_USERNAME;
+    const password = process.env.REINS_PASSWORD;
+
+    if (!parsedRequirements) {
+      return res.status(400).json({
+        error: '解析結果がありません。先に /api/parse-requirements を呼び出してください。'
+      });
+    }
+
+    if (!parsedRequirements.searchOptions || parsedRequirements.searchOptions.length === 0) {
+      return res.status(400).json({
+        error: '検索オプションがありません。'
+      });
+    }
+
+    if (!username || !password) {
+      return res.status(500).json({
+        error: 'Server credentials not configured'
+      });
+    }
+
+    console.log('='.repeat(60));
+    console.log('🔄 多轮検索リクエスト');
+    console.log('='.repeat(60));
+    console.log('  選択されたオプション:', selectedOptionIds || 'all');
+    console.log('  最大ラウンド数:', maxRounds || 5);
+
+    // 検索専用フォルダを作成
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const keyword = parsedRequirements.searchOptions[0]?.description?.substring(0, 20)?.replace(/[\\/:*?"<>|]/g, '_') || 'multi-search';
+    const searchFolderName = `${timestamp}_${keyword}`;
+    const searchDownloadDir = path.join(DOWNLOADS_DIR, searchFolderName);
+
+    if (!fs.existsSync(DOWNLOADS_DIR)) {
+      fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+    }
+    fs.mkdirSync(searchDownloadDir, { recursive: true });
+
+    // 基本条件（賃料、面積、間取り等）
+    const baseConditions = {
+      rentMin: parsedRequirements.rentMin,
+      rentMax: parsedRequirements.rentMax,
+      areaMin: parsedRequirements.areaMin,
+      areaMax: parsedRequirements.areaMax,
+      layouts: parsedRequirements.layouts,
+      floorMin: parsedRequirements.floorMin,
+      direction: parsedRequirements.direction,
+      propertyType: parsedRequirements.propertyType,
+      parking: parsedRequirements.parking,
+      isNew: parsedRequirements.isNew,
+      petAllowed: parsedRequirements.petAllowed,
+      corner: parsedRequirements.corner,
+      equipment: parsedRequirements.equipment,
+      keywords: parsedRequirements.keywords,
+      downloadDir: searchDownloadDir
+    };
+
+    // 执行多轮搜索
+    const result = await reinsService.searchMultipleRounds(
+      username,
+      password,
+      baseConditions,
+      parsedRequirements.searchOptions,
+      {
+        maxRounds: maxRounds || 5,
+        selectedOptions: selectedOptionIds
+      }
+    );
+
+    // 如果有PDF文件，合并它们
+    let finalPdfUrl = null;
+    if (result.pdfFiles && result.pdfFiles.length > 0) {
+      let finalPdfPath;
+      if (result.pdfFiles.length === 1) {
+        finalPdfPath = result.pdfFiles[0];
+      } else {
+        // 合并多个PDF
+        const mergeTimestamp = Date.now();
+        finalPdfPath = path.join(searchDownloadDir, `merged_${mergeTimestamp}.pdf`);
+        await reinsService.mergePDFs(result.pdfFiles, finalPdfPath);
+      }
+      const pdfFilename = path.basename(finalPdfPath);
+      finalPdfUrl = `/downloads/${searchFolderName}/${pdfFilename}`;
+    }
+
+    res.json({
+      success: true,
+      type: 'multiRoundSearch',
+      totalRounds: result.totalRounds,
+      completedRounds: result.completedRounds,
+      rounds: result.rounds.map(r => ({
+        round: r.round,
+        optionId: r.option?.id,
+        description: r.option?.description,
+        success: r.success,
+        propertiesCount: r.propertiesCount,
+        error: r.error
+      })),
+      properties: result.properties,
+      uniquePropertyCount: result.uniquePropertyCount,
+      pdfUrl: finalPdfUrl,
+      errors: result.errors
+    });
+
+  } catch (error) {
+    console.error('Multi-round search error:', error);
+    res.status(500).json({
+      error: 'マルチ検索に失敗しました',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * 并发搜索 - 同时启动多个浏览器进行搜索，然后合并结果
+ * POST /api/search-concurrent
+ */
+app.post('/api/search-concurrent', async (req, res) => {
+  try {
+    const { parsedRequirements, selectedOptionIds, maxConcurrent } = req.body;
+    const username = process.env.REINS_USERNAME;
+    const password = process.env.REINS_PASSWORD;
+
+    if (!parsedRequirements) {
+      return res.status(400).json({
+        error: '解析結果がありません。先に /api/parse-requirements を呼び出してください。'
+      });
+    }
+
+    if (!parsedRequirements.searchOptions || parsedRequirements.searchOptions.length === 0) {
+      return res.status(400).json({
+        error: '検索オプションがありません。'
+      });
+    }
+
+    if (!username || !password) {
+      return res.status(500).json({
+        error: 'Server credentials not configured'
+      });
+    }
+
+    console.log('='.repeat(60));
+    console.log('⚡ 並列検索リクエスト');
+    console.log('='.repeat(60));
+    console.log('  選択されたオプション:', selectedOptionIds || 'all');
+    console.log('  最大並列数:', maxConcurrent || 3);
+
+    // 検索専用フォルダを作成
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const keyword = parsedRequirements.searchOptions[0]?.description?.substring(0, 20)?.replace(/[\\/:*?"<>|]/g, '_') || 'concurrent-search';
+    const searchFolderName = `${timestamp}_${keyword}`;
+    const searchDownloadDir = path.join(DOWNLOADS_DIR, searchFolderName);
+
+    if (!fs.existsSync(DOWNLOADS_DIR)) {
+      fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+    }
+    fs.mkdirSync(searchDownloadDir, { recursive: true });
+
+    // 基本条件
+    const baseConditions = {
+      rentMin: parsedRequirements.rentMin,
+      rentMax: parsedRequirements.rentMax,
+      areaMin: parsedRequirements.areaMin,
+      areaMax: parsedRequirements.areaMax,
+      layouts: parsedRequirements.layouts,
+      floorMin: parsedRequirements.floorMin,
+      direction: parsedRequirements.direction,
+      propertyType: parsedRequirements.propertyType,
+      parking: parsedRequirements.parking,
+      isNew: parsedRequirements.isNew,
+      petAllowed: parsedRequirements.petAllowed,
+      corner: parsedRequirements.corner,
+      equipment: parsedRequirements.equipment,
+      keywords: parsedRequirements.keywords,
+      downloadDir: searchDownloadDir
+    };
+
+    // 执行并发搜索
+    const result = await reinsService.searchConcurrent(
+      username,
+      password,
+      baseConditions,
+      parsedRequirements.searchOptions,
+      {
+        maxConcurrent: maxConcurrent || 3,
+        selectedOptions: selectedOptionIds
+      }
+    );
+
+    // 合并 PDF 文件
+    let finalPdfUrl = null;
+    if (result.pdfFiles && result.pdfFiles.length > 0) {
+      let finalPdfPath;
+      if (result.pdfFiles.length === 1) {
+        finalPdfPath = result.pdfFiles[0];
+      } else {
+        // 合并多个 PDF（去重后）
+        const uniquePdfFiles = [...new Set(result.pdfFiles)];
+        const mergeTimestamp = Date.now();
+        finalPdfPath = path.join(searchDownloadDir, `merged_concurrent_${mergeTimestamp}.pdf`);
+
+        console.log(`\n📄 PDF合併処理: ${uniquePdfFiles.length}件のPDFを合併中...`);
+        await reinsService.mergePDFs(uniquePdfFiles, finalPdfPath);
+        console.log(`✓ 合併完了: ${path.basename(finalPdfPath)}`);
+      }
+      const pdfFilename = path.basename(finalPdfPath);
+      finalPdfUrl = `/downloads/${searchFolderName}/${pdfFilename}`;
+    }
+
+    res.json({
+      success: true,
+      type: 'concurrentSearch',
+      totalRounds: result.totalRounds,
+      completedRounds: result.completedRounds,
+      duration: result.duration,
+      rounds: result.rounds.map(r => ({
+        round: r.round,
+        optionId: r.option?.id,
+        description: r.option?.description,
+        success: r.success,
+        propertiesCount: r.propertiesCount,
+        error: r.error
+      })),
+      properties: result.properties,
+      uniquePropertyCount: result.uniquePropertyCount,
+      pdfUrl: finalPdfUrl,
+      errors: result.errors
+    });
+
+  } catch (error) {
+    console.error('Concurrent search error:', error);
+    res.status(500).json({
+      error: '並列検索に失敗しました',
       message: error.message
     });
   }
