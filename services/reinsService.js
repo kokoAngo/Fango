@@ -2007,6 +2007,7 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
 
   /**
    * 等待文件下载完成（使用预先记录的文件列表）
+   * 重要：等待所有下载完成后再返回（REINS可能会分割成多个PDF）
    */
   async waitForDownloadWithExisting(timeout = 30000, existingFiles = new Set()) {
     const downloadDir = this.currentDownloadDir || DOWNLOADS_DIR;
@@ -2014,6 +2015,9 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
 
     console.log(`  等待目录: ${downloadDir}`);
     console.log(`  排除文件数: ${existingFiles.size}`);
+
+    let foundNewPdf = false;
+    let stableCount = 0;  // 用于检测下载是否稳定完成
 
     while (Date.now() - startTime < timeout) {
       if (!fs.existsSync(downloadDir)) {
@@ -2027,9 +2031,6 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
       const downloadingFiles = files.filter(f =>
         f.endsWith('.crdownload') || f.endsWith('.tmp') || f.endsWith('.download')
       );
-      if (downloadingFiles.length > 0) {
-        console.log(`  下载中: ${downloadingFiles.join(', ')}`);
-      }
 
       // 只返回新下载的PDF文件（排除已有文件和临时下载文件）
       const newPdfFiles = files.filter(f =>
@@ -2038,9 +2039,22 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
         !existingFiles.has(f)
       );
 
-      if (newPdfFiles.length > 0) {
-        console.log(`  检测到新文件: ${newPdfFiles.join(', ')}`);
-        return newPdfFiles.map(f => path.join(downloadDir, f));
+      if (downloadingFiles.length > 0) {
+        console.log(`  下载中: ${downloadingFiles.join(', ')}`);
+        stableCount = 0;  // 还有文件在下载，重置稳定计数
+        foundNewPdf = newPdfFiles.length > 0;
+      } else if (newPdfFiles.length > 0) {
+        // 没有正在下载的文件，且有新PDF
+        stableCount++;
+
+        if (stableCount >= 2) {
+          // 等待2次循环确认下载稳定完成（防止新下载刚开始）
+          console.log(`  检测到新文件: ${newPdfFiles.join(', ')}`);
+          return newPdfFiles.map(f => path.join(downloadDir, f));
+        }
+      } else if (foundNewPdf) {
+        // 之前有新PDF但现在没有了（可能是检测错误），继续等待
+        stableCount = 0;
       }
 
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2048,8 +2062,18 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
 
     // 超时后最后检查一次
     const finalFiles = fs.existsSync(downloadDir) ? fs.readdirSync(downloadDir) : [];
-    console.log(`  超时，目录中的文件: ${finalFiles.join(', ') || '(无)'}`);
+    const finalNewPdfs = finalFiles.filter(f =>
+      f.endsWith('.pdf') &&
+      !f.endsWith('.crdownload') &&
+      !existingFiles.has(f)
+    );
 
+    if (finalNewPdfs.length > 0) {
+      console.log(`  超时，但找到新文件: ${finalNewPdfs.join(', ')}`);
+      return finalNewPdfs.map(f => path.join(downloadDir, f));
+    }
+
+    console.log(`  超时，目录中的文件: ${finalFiles.join(', ') || '(无)'}`);
     return [];
   }
 
@@ -2333,10 +2357,11 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
           if (downloadedFiles.length > 0) {
             console.log(`✓ ${downloadedFiles.length}件のPDFをダウンロード`);
             downloadedFiles.forEach(f => console.log(`  - ${path.basename(f)}`));
-            // 最初のPDFを返す（合併はserver.jsで行う）
+            // すべてのPDFを返す（REINSは50件以上の場合、複数のPDFに分割する）
             return {
               type: 'pdf',
               pdfPath: downloadedFiles[0],
+              pdfFiles: downloadedFiles,  // すべてのPDFファイル
               count: selectedCount,
               propertyIds: selectedPropertyIds
             };
@@ -2836,12 +2861,11 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
         };
         allResults.rounds.push(roundResult);
 
-        // 合并 PDF 文件
-        if (searchResult.pdfPath) {
-          allResults.allPdfFiles.push(searchResult.pdfPath);
-        }
-        if (searchResult.pdfFiles) {
+        // 合并 PDF 文件（优先使用 pdfFiles 数组，避免重复）
+        if (searchResult.pdfFiles && searchResult.pdfFiles.length > 0) {
           allResults.allPdfFiles.push(...searchResult.pdfFiles);
+        } else if (searchResult.pdfPath) {
+          allResults.allPdfFiles.push(searchResult.pdfPath);
         }
 
         // 合并物件（去重）
@@ -2914,121 +2938,51 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
   }
 
   /**
-   * 运行单个搜索（独立的浏览器实例）
+   * 运行单个搜索（独立的 ReinsService 实例，避免并发竞争条件）
    */
   async runSingleSearch(username, password, baseConditions, option, roundNumber) {
-    let browser = null;
-    let page = null;
+    // 创建独立的 ReinsService 实例，避免共享 this.page/this.browser 的竞争条件
+    const isolatedService = new ReinsService();
 
     try {
       console.log(`  [${roundNumber}] 🌐 ブラウザを起動中: ${option.description}`);
 
-      // 创建独立的浏览器实例
-      const launchOptions = {
-        headless: false,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--allow-running-insecure-content',
-          '--ignore-certificate-errors'
-        ]
-      };
-
-      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      // 为每个线程创建独立的子目录，避免并发下载时文件名冲突
+      const baseDownloadDir = baseConditions.downloadDir || this.ensureDownloadDir();
+      const threadDownloadDir = path.join(baseDownloadDir, `thread_${roundNumber}`);
+      if (!fs.existsSync(threadDownloadDir)) {
+        fs.mkdirSync(threadDownloadDir, { recursive: true });
       }
 
-      browser = await puppeteer.launch(launchOptions);
-      page = await browser.newPage();
-      await page.setViewport({ width: 1920, height: 1080 });
-
-      // 配置下载目录
-      const downloadDir = baseConditions.downloadDir || this.ensureDownloadDir();
-      const client = await page.target().createCDPSession();
-      await client.send('Page.setDownloadBehavior', {
-        behavior: 'allow',
-        downloadPath: downloadDir
-      });
-
-      // 登录
-      await page.goto(REINS_LOGIN_URL, { waitUntil: 'networkidle0', timeout: TIMEOUT });
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      await page.waitForSelector('input', { timeout: TIMEOUT });
-
-      await page.evaluate((user, pass) => {
-        const inputs = document.querySelectorAll('input');
-        inputs.forEach(input => {
-          if (input.type === 'text') {
-            input.value = user;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-          if (input.type === 'password') {
-            input.value = pass;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        });
-        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach(cb => { if (!cb.checked) cb.click(); });
-      }, username, password);
-
-      await page.evaluate(() => {
-        const buttons = document.querySelectorAll('button');
-        for (const btn of buttons) {
-          if (btn.textContent?.includes('ログイン')) {
-            btn.click();
-            break;
-          }
-        }
-      });
-
-      await Promise.race([
-        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 }),
-        new Promise(resolve => setTimeout(resolve, 10000))
-      ]);
+      // 使用独立服务实例的 login 方法（使用线程专用下载目录）
+      await isolatedService.login(username, password, threadDownloadDir);
 
       console.log(`  [${roundNumber}] ✓ ログイン完了`);
 
-      // 保存原始的 this.page，用于搜索操作
-      const originalPage = this.page;
-      const originalBrowser = this.browser;
-      this.page = page;
-      this.browser = browser;
+      // 构建搜索条件
+      const conditions = isolatedService.buildConditionsFromOption(baseConditions, option);
 
-      try {
-        // 构建搜索条件
-        const conditions = this.buildConditionsFromOption(baseConditions, option);
+      // 导航到搜索页面
+      await isolatedService.navigateToRentalSearch();
 
-        // 导航到搜索页面
-        await this.navigateToRentalSearch();
+      // 填充并执行搜索
+      await isolatedService.fillSearchConditions(conditions);
+      await isolatedService.executeSearch(conditions);
 
-        // 填充并执行搜索
-        await this.fillSearchConditions(conditions);
-        await this.executeSearch(conditions);
+      // 提取结果
+      const result = await isolatedService.extractProperties();
 
-        // 提取结果
-        const result = await this.extractProperties();
+      console.log(`  [${roundNumber}] ✓ 検索完了: ${option.description}`);
 
-        console.log(`  [${roundNumber}] ✓ 検索完了: ${option.description}`);
-
-        return result;
-
-      } finally {
-        // 恢复原始的 page 和 browser
-        this.page = originalPage;
-        this.browser = originalBrowser;
-      }
+      return result;
 
     } catch (error) {
       console.error(`  [${roundNumber}] ✗ エラー: ${error.message}`);
       throw error;
 
     } finally {
-      // 关闭此搜索的浏览器实例
-      if (page) await page.close().catch(() => {});
-      if (browser) await browser.close().catch(() => {});
+      // 关闭独立服务的浏览器实例
+      await isolatedService.close();
     }
   }
 

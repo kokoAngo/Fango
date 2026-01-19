@@ -120,14 +120,12 @@ app.post('/api/search', async (req, res) => {
     }
 
     // 複数位置で順次検索（100件以上見つかるまで、最大10回まで）
-    const MIN_PROPERTIES = 100;
-    const MAX_SEARCH_ATTEMPTS = 10;
+    const MAX_SEARCH_ATTEMPTS = 10;  // 最大検索オプション数
     let allProperties = [];
     let searchedLocations = [];
     let allPdfPaths = [];  // 複数PDFを収集
     let allPropertyIds = [];  // 物件IDを収集
     let totalPdfCount = 0;
-    let searchAttempts = 0;
 
     // 検索専用フォルダを作成（時間+キーワード）
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -147,116 +145,68 @@ app.post('/api/search', async (req, res) => {
     fs.mkdirSync(searchDownloadDir, { recursive: true });
     console.log(`検索専用フォルダを作成: ${searchFolderName}`);
 
-    // searchOptions を使用して多轮検索（優先）
+    // searchOptions を使用して検索（優先）
     const itemsToSearch = searchOptions.length > 0 ? searchOptions : locations.map((loc, i) => ({
       id: i + 1,
       description: `${loc.prefecture} ${loc.city}で所在地検索`,
       searchMethod: 'location',
       prefecture: loc.prefecture,
       city: loc.city,
-      detail: loc.detail
+      town: loc.town || null,
+      detail: loc.town || loc.detail || null
     }));
 
-    console.log(`\n🔄 検索を開始: ${itemsToSearch.length}件の検索オプション`);
+    // 基本条件（各並列検索で共有）
+    const baseConditions = {
+      ...mbtiConditions,
+      ...parsedRequirements,
+      downloadDir: searchDownloadDir
+    };
 
-    for (let i = 0; i < itemsToSearch.length && totalPdfCount < MIN_PROPERTIES && searchAttempts < MAX_SEARCH_ATTEMPTS; i++) {
-      searchAttempts++;
-      const option = itemsToSearch[i];
-      console.log(`\n【検索 ${searchAttempts}/${MAX_SEARCH_ATTEMPTS}】${option.description}`);
+    // 並列検索を使用（最大5並列）
+    const MAX_CONCURRENT = 5;
+    const optionsToSearch = itemsToSearch.slice(0, Math.min(itemsToSearch.length, MAX_SEARCH_ATTEMPTS));
 
-      // この検索オプション用の条件を作成
-      // 重要: locations を現在の option の情報で上書きする（町丁目を含む）
-      const optionRequirements = {
-        ...parsedRequirements,
-        searchMethod: option.searchMethod,
-        prefecture: option.prefecture,
-        cities: option.city ? [option.city] : [],
-        // locations を現在の option 用に設定（town を detail として使用）
-        locations: option.city ? [{
-          prefecture: option.prefecture,
-          city: option.city,
-          town: option.town || null,
-          detail: option.town || option.detail || null  // town を detail として使用
-        }] : [],
-        line: option.line || null,
-        station: option.station || null,
-        stationTo: option.stationTo || null,
-        walkMinutes: option.walkMinutes || parsedRequirements.walkMinutes || null
-      };
+    console.log(`\n⚡ 並列検索を開始: ${optionsToSearch.length}件の検索オプション（最大${MAX_CONCURRENT}並列）`);
 
-      const optionReinsFields = aiRequirementsParser.toReinsFields(optionRequirements);
+    const concurrentResult = await reinsService.searchConcurrent(
+      username,
+      password,
+      baseConditions,
+      optionsToSearch,
+      { maxConcurrent: MAX_CONCURRENT }
+    );
 
-      const searchConditions = {
-        ...mbtiConditions,
-        userRequirements: optionRequirements,
-        reinsFields: optionReinsFields,
-        downloadDir: searchDownloadDir
-      };
+    // 並列検索の結果を集計
+    if (concurrentResult) {
+      // PDF ファイルを収集
+      if (concurrentResult.pdfFiles && concurrentResult.pdfFiles.length > 0) {
+        allPdfPaths.push(...concurrentResult.pdfFiles);
+        totalPdfCount = concurrentResult.uniquePropertyCount || concurrentResult.pdfFiles.length;
+      }
 
-      try {
-        const result = await reinsService.searchProperties(
-          username,
-          password,
-          searchConditions
-        );
+      // 物件を収集
+      if (concurrentResult.properties && concurrentResult.properties.length > 0) {
+        allProperties.push(...concurrentResult.properties);
+      }
 
-        // 結果タイプを確認
-        if (result && result.type === 'pdf') {
-          // PDFダウンロード成功 - 収集して続行
-          console.log(`  → PDF生成成功: ${path.basename(result.pdfPath)}`);
-          allPdfPaths.push(result.pdfPath);
-          totalPdfCount += result.count || 1;
-          searchedLocations.push({ option: option.description, ...option });
-
-          // 物件IDを収集（重複除外）
-          if (result.propertyIds && result.propertyIds.length > 0) {
-            const newIds = result.propertyIds.filter(id => !allPropertyIds.includes(id));
+      // 検索済み位置を記録
+      if (concurrentResult.rounds) {
+        for (const round of concurrentResult.rounds) {
+          if (round.success && round.option) {
+            searchedLocations.push({ option: round.option.description, ...round.option });
+          }
+          // 物件IDを収集
+          if (round.propertyIds && round.propertyIds.length > 0) {
+            const newIds = round.propertyIds.filter(id => !allPropertyIds.includes(id));
             allPropertyIds.push(...newIds);
-            console.log(`  → 物件ID: ${newIds.length}件収集 (重複除外後)`);
           }
-
-          // 100件以上収集したら終了
-          if (totalPdfCount >= MIN_PROPERTIES) {
-            console.log(`\n${totalPdfCount}件以上のPDFを収集したため検索終了`);
-            break;
-          }
-        } else if (result && result.type === 'properties' && result.properties) {
-          // プロパティリスト（フォールバック）
-          const properties = result.properties;
-          if (properties.length > 0) {
-            properties.forEach(p => {
-              p.searchOption = option.description;
-            });
-            allProperties.push(...properties);
-            searchedLocations.push({ option: option.description, ...option });
-            console.log(`  → ${properties.length}件 見つかりました (累計: ${allProperties.length}件)`);
-          } else {
-            console.log(`  → 0件`);
-          }
-        } else if (Array.isArray(result)) {
-          // 旧形式（配列）
-          if (result.length > 0) {
-            result.forEach(p => {
-              p.searchOption = option.description;
-            });
-            allProperties.push(...result);
-            searchedLocations.push({ option: option.description, ...option });
-            console.log(`  → ${result.length}件 見つかりました (累計: ${allProperties.length}件)`);
-          } else {
-            console.log(`  → 0件`);
-          }
-        } else {
-          console.log(`  → 0件`);
         }
-      } catch (err) {
-        console.log(`  → 検索エラー: ${err.message}`);
       }
 
-      // 100件以上見つかったら終了
-      if (allProperties.length >= MIN_PROPERTIES || totalPdfCount >= MIN_PROPERTIES) {
-        console.log(`\n${MIN_PROPERTIES}件以上見つかったため検索終了`);
-        break;
-      }
+      console.log(`\n✓ 並列検索完了: ${concurrentResult.completedRounds}/${concurrentResult.totalRounds} 成功`);
+      console.log(`  発見物件数: ${concurrentResult.uniquePropertyCount || allProperties.length}件`);
+      console.log(`  PDFファイル数: ${allPdfPaths.length}件`);
     }
 
     // 収集したPDFを合併して返す
