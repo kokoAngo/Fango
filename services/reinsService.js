@@ -1610,9 +1610,11 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // ========== 地域選択 ==========
-      console.log('\n【Phase 2】地域の選択（入力ガイド使用）');
-      console.log('─'.repeat(40));
+      // ========== 検索方法の判定 ==========
+      // searchMethod が "line" の場合は所在地選択をスキップし、沿線選択のみを行う
+      const searchMethod = userRequirements.searchMethod || 'location';
+      const shouldSelectLine = searchMethod === 'line' || searchMethod === 'bus';
+      const shouldSelectLocation = searchMethod === 'location' || !shouldSelectLine;
 
       const prefecture = userRequirements.prefecture || textInputs['__BVID__325'] || '東京都';
       const cities = userRequirements.cities || [];
@@ -1621,45 +1623,49 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
         ? userRequirements.locations[0].detail
         : null;
 
-      console.log('[fillSearchConditions] detail読み取り:');
-      console.log('  userRequirements.locations:', JSON.stringify(userRequirements.locations, null, 2));
-      console.log('  detail:', detail);
+      // ========== 地域選択（所在地検索の場合のみ） ==========
+      if (shouldSelectLocation) {
+        console.log('\n【Phase 2】地域の選択（入力ガイド使用）');
+        console.log('─'.repeat(40));
 
-      if (prefecture || cities.length > 0) {
-        const locationSelected = await this.selectLocationViaGuide(prefecture, cities, detail);
+        console.log('[fillSearchConditions] detail読み取り:');
+        console.log('  userRequirements.locations:', JSON.stringify(userRequirements.locations, null, 2));
+        console.log('  detail:', detail);
 
-        if (!locationSelected) {
-          // 入力ガイドが失敗した場合、従来のテキスト入力にフォールバック
-          console.log('入力ガイド failed, falling back to text input...');
-          const prefectureClicked = await this.page.evaluate((inputId) => {
-            const input = document.getElementById(inputId);
-            if (input) {
-              input.focus();
-              input.click();
-              return true;
+        if (prefecture || cities.length > 0) {
+          const locationSelected = await this.selectLocationViaGuide(prefecture, cities, detail);
+
+          if (!locationSelected) {
+            // 入力ガイドが失敗した場合、従来のテキスト入力にフォールバック
+            console.log('入力ガイド failed, falling back to text input...');
+            const prefectureClicked = await this.page.evaluate((inputId) => {
+              const input = document.getElementById(inputId);
+              if (input) {
+                input.focus();
+                input.click();
+                return true;
+              }
+              return false;
+            }, '__BVID__325');
+
+            if (prefectureClicked) {
+              await this.page.keyboard.down('Control');
+              await this.page.keyboard.press('a');
+              await this.page.keyboard.up('Control');
+              await this.page.keyboard.press('Backspace');
+              await this.page.keyboard.type(prefecture, { delay: 30 });
+              await this.page.keyboard.press('Tab');
+              console.log('Prefecture filled via text input');
             }
-            return false;
-          }, '__BVID__325');
-
-          if (prefectureClicked) {
-            await this.page.keyboard.down('Control');
-            await this.page.keyboard.press('a');
-            await this.page.keyboard.up('Control');
-            await this.page.keyboard.press('Backspace');
-            await this.page.keyboard.type(prefecture, { delay: 30 });
-            await this.page.keyboard.press('Tab');
-            console.log('Prefecture filled via text input');
           }
         }
+      } else {
+        console.log('\n【Phase 2】地域の選択: スキップ（沿線検索モード）');
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // ========== 沿線・駅選択（オプション - 失敗時はスキップ） ==========
-      // searchMethod が "location" の場合は沿線選択をスキップ
-      const searchMethod = userRequirements.searchMethod || 'location';
-      const shouldSelectLine = searchMethod === 'line' || searchMethod === 'bus';
-
+      // ========== 沿線・駅選択（沿線検索の場合のみ） ==========
       // 沿線情報を取得（searchMethod が line の場合のみ textInputs から取得）
       const line = shouldSelectLine ? (userRequirements.line || textInputs['__BVID__376']) : userRequirements.line;
       const startStation = userRequirements.startStation;
@@ -1668,14 +1674,14 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
       let lineSelectionSuccess = false;
 
       // searchMethod に基づいてログを出力
-      if (searchMethod === 'location') {
+      if (!shouldSelectLine) {
         console.log('\n【Phase 2.5】沿線・駅の選択: スキップ（所在地検索モード）');
       }
 
       if (line && shouldSelectLine) {
         console.log('\n【Phase 2.5】沿線・駅の選択（入力ガイド使用）');
         console.log('─'.repeat(40));
-        console.log('  ※ 沿線選択は任意です。失敗時は所在地のみで検索します。');
+        console.log('  ※ 沿線検索モード: 所在地は未指定、沿線・駅のみで検索します。');
 
         try {
           // 沿線が指定されている場合、入力ガイドで選択を試みる
