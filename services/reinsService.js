@@ -1,10 +1,11 @@
 const puppeteer = require('puppeteer');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument, degrees } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
 const { getSelectionPath, normalizePrefecture } = require('./areaMapping');
 const { getKanaRowForLine, getRegionForPrefecture } = require('./lineMapping');
 const OpenAI = require('openai');
+const reinsCache = require('./reinsCacheService');
 
 const REINS_LOGIN_URL = 'https://system.reins.jp/login/main/KG/GKG001200';
 const TIMEOUT = 60000;
@@ -415,6 +416,7 @@ ${JSON.stringify(context, null, 2)}
       }
 
       // ユーザー需要に合う最初の項目を選択
+      let selectedWard = null; // キャッシュ用に選択されたward名を記録
       if (cities && cities.length > 0) {
         let citySelected = false;
         for (const c of cities) {
@@ -425,6 +427,7 @@ ${JSON.stringify(context, null, 2)}
           if (matchedOption) {
             citySelected = await this.selectFromDropdown(1, matchedOption);
             if (citySelected) {
+              selectedWard = matchedOption;
               console.log('           → 選択: "' + matchedOption + '" (需要: "' + c + '")');
               break;
             }
@@ -433,9 +436,11 @@ ${JSON.stringify(context, null, 2)}
         if (!citySelected) {
           console.log('           → 需要に合うオプションなし、最初のオプションを選択');
           await this.selectFirstOption(1);
+          selectedWard = cityOptions[0] || null;
         }
       } else {
         const citySelected = await this.selectFirstOption(1);
+        selectedWard = cityOptions[0] || null;
         console.log('           → ' + (citySelected ? '✓ 成功（最初のオプション）' : '✗ 失敗'));
       }
       await this.page.screenshot({ path: 'debug-location-guide-4.png' });
@@ -501,8 +506,8 @@ ${JSON.stringify(context, null, 2)}
       console.log('  [Step 8] 町丁目を選択:');
       console.log('           詳細地名ヒント: ' + (detail || '(なし)'));
       const choSelected = detail
-        ? await this.selectChoWithAI(1, detail, city)
-        : await this.selectChoFromDropdown(1);
+        ? await this.selectChoWithAI(1, detail, city, normalizedPref, selectedWard)
+        : await this.selectChoFromDropdown(1, normalizedPref, selectedWard);
       console.log('           → ' + (choSelected ? '✓ 成功' : '✗ 失敗'));
       await new Promise(resolve => setTimeout(resolve, 1500));
       await this.page.screenshot({ path: 'debug-location-guide-7.png' });
@@ -682,6 +687,15 @@ ${JSON.stringify(context, null, 2)}
       console.log('\n┌─────────────────────────────────────');
       console.log('│ 画面3: 駅選択（区間指定）');
       console.log('└─────────────────────────────────────');
+
+      // 駅の選択肢を取得してキャッシュに保存
+      const stationOptions = await this.getSelectOptions(0);
+      if (stationOptions.length > 0 && prefecture && lineName) {
+        const added = reinsCache.addLine(prefecture, lineName, stationOptions);
+        if (added > 0) {
+          console.log(`  [Cache] ${added}件の駅をキャッシュに保存 (${lineName})`);
+        }
+      }
 
       // Step 7: 始発駅を選択
       console.log('  [Step 7] 始発駅を選択: ' + (startStation || '(最初のオプション)'));
@@ -957,8 +971,10 @@ ${JSON.stringify(context, null, 2)}
    * 町丁目のselect要素から選択（全域を優先、なければ最初のオプション）
    * 選択前に全オプションを遍歴して表示
    * @param {number} selectIndex - モーダル内のselect要素のインデックス（0始まり）
+   * @param {string} prefecture - 都道府県名（キャッシュ用）
+   * @param {string} ward - 区名（キャッシュ用）
    */
-  async selectChoFromDropdown(selectIndex) {
+  async selectChoFromDropdown(selectIndex, prefecture = null, ward = null) {
     const result = await this.page.evaluate((index) => {
       const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"], .modal');
       const container = modal || document;
@@ -1032,6 +1048,16 @@ ${JSON.stringify(context, null, 2)}
     }, selectIndex);
 
     if (result.found) {
+      // 町丁目をキャッシュに保存（「全域」以外）
+      if (prefecture && ward && result.availableOptions) {
+        const townNames = result.availableOptions.filter(t => t && t !== '全域');
+        if (townNames.length > 0) {
+          const added = reinsCache.addTowns(prefecture, ward, ward, townNames);
+          if (added > 0) {
+            console.log(`           [Cache] ${added}件の町丁目をキャッシュに保存`);
+          }
+        }
+      }
       console.log('  ✓ 町丁目選択 [' + result.matchType + ']: "' + result.selectedText + '"');
     } else {
       console.log('  ✗ selectChoFromDropdown失敗:', result.error);
@@ -1044,8 +1070,10 @@ ${JSON.stringify(context, null, 2)}
    * @param {number} selectIndex - select要素のインデックス
    * @param {string} detailHint - ユーザーが指定した詳細地名（例: "大岡山"）
    * @param {string} city - 市区町村名
+   * @param {string} prefecture - 都道府県名（キャッシュ用）
+   * @param {string} ward - 区名（キャッシュ用）
    */
-  async selectChoWithAI(selectIndex, detailHint, city) {
+  async selectChoWithAI(selectIndex, detailHint, city, prefecture = null, ward = null) {
     // まず選択肢を取得
     const optionsData = await this.page.evaluate((index) => {
       const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"], .modal');
@@ -1070,6 +1098,19 @@ ${JSON.stringify(context, null, 2)}
     if (!optionsData.found || !optionsData.options || optionsData.options.length === 0) {
       console.log('  ⚠ 町丁目の選択肢が取得できません');
       return this.selectChoFromDropdown(selectIndex);
+    }
+
+    // 町丁目をキャッシュに保存（「全域」以外）
+    if (prefecture && ward && optionsData.options.length > 0) {
+      const townNames = optionsData.options
+        .map(o => o.text)
+        .filter(t => t && t !== '全域');
+      if (townNames.length > 0) {
+        const added = reinsCache.addTowns(prefecture, city || ward, ward, townNames);
+        if (added > 0) {
+          console.log(`           [Cache] ${added}件の町丁目をキャッシュに保存`);
+        }
+      }
     }
 
     // オプションをログに表示
@@ -2078,19 +2119,311 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
   }
 
   /**
-   * 合并多个PDF文件
+   * 将PDF页面渲染为图片（Base64）- 使用Puppeteer + PDF.js CDN
+   * @param {string} pdfPath - PDF文件路径
+   * @param {number} pageNum - 页码（从1开始）
+   * @returns {string} - Base64编码的PNG图片
    */
-  async mergePDFs(pdfPaths, outputPath) {
+  async renderPdfPageToImage(pdfPath, pageNum) {
+    let browser = null;
+    try {
+      // 读取PDF文件并转换为Base64
+      const pdfBytes = fs.readFileSync(pdfPath);
+      const pdfBase64 = pdfBytes.toString('base64');
+
+      // 启动临时浏览器实例
+      browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const page = await browser.newPage();
+      await page.setViewport({ width: 850, height: 1200 });
+
+      // 创建内嵌PDF.js的HTML页面
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+          <style>
+            body { margin: 0; padding: 0; background: white; }
+            canvas { display: block; }
+          </style>
+        </head>
+        <body>
+          <canvas id="pdf-canvas"></canvas>
+          <script>
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            async function renderPdf() {
+              const pdfData = atob('${pdfBase64}');
+              const pdfArray = new Uint8Array(pdfData.length);
+              for (let i = 0; i < pdfData.length; i++) {
+                pdfArray[i] = pdfData.charCodeAt(i);
+              }
+
+              const pdf = await pdfjsLib.getDocument({ data: pdfArray }).promise;
+              const pdfPage = await pdf.getPage(${pageNum});
+
+              const scale = 1.5;
+              const viewport = pdfPage.getViewport({ scale });
+
+              const canvas = document.getElementById('pdf-canvas');
+              const context = canvas.getContext('2d');
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+
+              await pdfPage.render({
+                canvasContext: context,
+                viewport: viewport
+              }).promise;
+
+              window.pdfRendered = true;
+            }
+
+            renderPdf().catch(err => {
+              console.error('PDF render error:', err);
+              window.pdfError = err.message;
+            });
+          </script>
+        </body>
+        </html>
+      `;
+
+      await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 30000 });
+
+      // 等待PDF渲染完成
+      await page.waitForFunction(() => window.pdfRendered || window.pdfError, { timeout: 30000 });
+
+      // 检查是否有错误
+      const pdfError = await page.evaluate(() => window.pdfError);
+      if (pdfError) {
+        throw new Error(pdfError);
+      }
+
+      // 获取canvas尺寸并截图
+      const canvasBox = await page.$eval('#pdf-canvas', el => ({
+        width: el.width,
+        height: el.height
+      }));
+
+      // 调整viewport以适应canvas
+      await page.setViewport({ width: canvasBox.width, height: canvasBox.height });
+
+      const screenshot = await page.screenshot({
+        encoding: 'base64',
+        type: 'png',
+        clip: { x: 0, y: 0, width: canvasBox.width, height: canvasBox.height }
+      });
+
+      return screenshot;
+    } catch (error) {
+      console.error(`  ⚠️ ページ ${pageNum} の画像変換エラー:`, error.message);
+      return null;
+    } finally {
+      if (browser) {
+        await browser.close().catch(() => {});
+      }
+    }
+  }
+
+  /**
+   * GPT Vision でPDF页面の正しい向きを分析
+   * @param {string} base64Image - Base64编码的图片
+   * @param {number} pageNum - 页码
+   * @returns {number} - 需要旋转的角度（0, 90, 180, 270）
+   */
+  async analyzePageOrientationWithGPT(base64Image, pageNum) {
+    const client = this.initOpenAI();
+    if (!client || !base64Image) return 0;
+
+    try {
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 100,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `この画像は不動産物件の図面または情報ページです。
+画像が正しく読める向きになっているか確認してください。
+
+文字やテキストが正しい向き（上から下、左から右）で読めるように、
+画像を何度回転させる必要がありますか？
+
+回答は数字のみ（0, 90, 180, 270のいずれか）:
+- 0 = 回転不要（正しい向き）
+- 90 = 右に90度回転が必要
+- 180 = 180度回転が必要
+- 270 = 左に90度回転が必要（または右に270度）
+
+数字のみで回答してください。`
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/png;base64,${base64Image}`,
+                  detail: 'low'
+                }
+              }
+            ]
+          }
+        ]
+      });
+
+      const content = response.choices[0].message.content.trim();
+      const rotation = parseInt(content.match(/\d+/)?.[0] || '0', 10);
+
+      if ([0, 90, 180, 270].includes(rotation)) {
+        return rotation;
+      }
+      return 0;
+    } catch (error) {
+      console.error(`  ⚠️ GPT分析エラー (ページ ${pageNum}):`, error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * GPT Visionを使用してPDFの全ページの向きを分析
+   * @param {string} pdfPath - PDF文件路径
+   * @returns {Array<number>} - 各ページの必要回転角度
+   */
+  async analyzePdfOrientationWithGPT(pdfPath) {
+    console.log('  🤖 GPT Visionでページ向きを分析中...');
+
+    try {
+      // 使用 pdf-lib 获取页数
+      const pdfBytes = fs.readFileSync(pdfPath);
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const numPages = pdfDoc.getPageCount();
+
+      const rotations = [];
+
+      for (let i = 1; i <= numPages; i++) {
+        process.stdout.write(`    ページ ${i}/${numPages}: `);
+
+        const base64Image = await this.renderPdfPageToImage(pdfPath, i);
+        if (!base64Image) {
+          console.log('画像変換失敗、スキップ');
+          rotations.push(0);
+          continue;
+        }
+
+        const rotation = await this.analyzePageOrientationWithGPT(base64Image, i);
+        rotations.push(rotation);
+
+        if (rotation === 0) {
+          console.log('正常 ✓');
+        } else {
+          console.log(`${rotation}°回転が必要`);
+        }
+      }
+
+      return rotations;
+    } catch (error) {
+      console.error('  ⚠️ PDF分析エラー:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 检测并校正PDF页面方向（简单宽高比方式，作为fallback）
+   * 如果页面是横向（宽 > 高），则旋转90度变为纵向
+   * @param {PDFPage} page - PDF页面对象
+   * @returns {boolean} - 是否进行了旋转
+   */
+  correctPageOrientation(page) {
+    const { width, height } = page.getSize();
+    const currentRotation = page.getRotation().angle;
+
+    // 考虑当前旋转角度后的实际方向
+    // 0° 或 180°: 原始方向
+    // 90° 或 270°: 宽高互换
+    const isRotated90or270 = (currentRotation === 90 || currentRotation === 270);
+    const effectiveWidth = isRotated90or270 ? height : width;
+    const effectiveHeight = isRotated90or270 ? width : height;
+
+    // 如果实际宽度 > 实际高度，说明是横向，需要旋转
+    if (effectiveWidth > effectiveHeight) {
+      const newRotation = (currentRotation + 90) % 360;
+      page.setRotation(degrees(newRotation));
+      console.log(`    📐 ページ回転: ${currentRotation}° → ${newRotation}° (横向き→縦向き)`);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 合并多个PDF文件
+   * @param {string[]} pdfPaths - PDF文件路径数组
+   * @param {string} outputPath - 输出文件路径
+   * @param {boolean|string} correctOrientation - 方向校正模式（暂时弃用，默认false）
+   *   - true/'gpt': 使用GPT Vision分析
+   *   - 'simple': 使用简单宽高比方式
+   *   - false: 不校正（默认）
+   */
+  async mergePDFs(pdfPaths, outputPath, correctOrientation = false) {
     try {
       console.log('\n📄 PDF合并開始...');
+
+      const useGPT = correctOrientation === true || correctOrientation === 'gpt';
+      const useSimple = correctOrientation === 'simple';
+
+      if (useGPT) {
+        console.log('  📐 ページ方向補正: GPT Vision（AI分析）');
+      } else if (useSimple) {
+        console.log('  📐 ページ方向補正: 簡易モード（横→縦）');
+      }
+
+      // Step 1: 如果使用GPT，先分析所有PDF的页面方向
+      const allRotations = new Map(); // pdfPath -> [rotations]
+
+      if (useGPT) {
+        for (const pdfPath of pdfPaths) {
+          console.log(`  分析中: ${path.basename(pdfPath)}`);
+          const rotations = await this.analyzePdfOrientationWithGPT(pdfPath);
+          allRotations.set(pdfPath, rotations);
+        }
+      }
+
+      // Step 2: 合并PDF并应用旋转
       const mergedPdf = await PDFDocument.create();
+      let rotatedCount = 0;
 
       for (const pdfPath of pdfPaths) {
         console.log('  読み込み中:', path.basename(pdfPath));
         const pdfBytes = fs.readFileSync(pdfPath);
         const pdf = await PDFDocument.load(pdfBytes);
         const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-        pages.forEach(page => mergedPdf.addPage(page));
+        const rotations = allRotations.get(pdfPath) || [];
+
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+
+          if (useGPT && rotations[i] && rotations[i] !== 0) {
+            // GPT分析结果：应用指定的旋转角度
+            const currentRotation = page.getRotation().angle;
+            const newRotation = (currentRotation + rotations[i]) % 360;
+            page.setRotation(degrees(newRotation));
+            console.log(`    📐 ページ${i + 1}: ${currentRotation}° → ${newRotation}°`);
+            rotatedCount++;
+          } else if (useSimple) {
+            // 简单模式：横向变纵向
+            if (this.correctPageOrientation(page)) {
+              rotatedCount++;
+            }
+          }
+
+          mergedPdf.addPage(page);
+        }
+      }
+
+      if (rotatedCount > 0) {
+        console.log(`  📐 合計 ${rotatedCount} ページを回転しました`);
       }
 
       const mergedBytes = await mergedPdf.save();

@@ -278,6 +278,65 @@
             border-color: #28a745;
         }
 
+        /* Search Areas Panel */
+        .search-areas-panel {
+            display: none;
+            background: #f8f9ff;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .search-areas-panel.active { display: block; }
+        .search-areas-panel h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-areas-panel h4::before { content: "🔍"; }
+
+        .areas-section { margin-bottom: 15px; }
+        .areas-section:last-child { margin-bottom: 0; }
+        .areas-section-title {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .areas-section-title.location::before { content: "📍 "; }
+        .areas-section-title.line::before { content: "🚃 "; }
+
+        .area-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .area-tag {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 0.9em;
+            color: #333;
+            transition: all 0.2s;
+        }
+        .area-tag.location { border-color: #667eea; color: #667eea; }
+        .area-tag.line { border-color: #27ae60; color: #27ae60; }
+        .area-tag:hover { transform: scale(1.05); }
+
+        .hierarchy-info {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .hierarchy-info span { color: #667eea; font-weight: bold; }
+
         .loading {
             text-align: center;
             padding: 60px 20px;
@@ -325,6 +384,19 @@
                     <div class="pdf-header">
                         <h3>物件図面 PDF</h3>
                         <span class="pdf-info" id="pdfInfo"></span>
+                    </div>
+                    <!-- Search Areas Panel -->
+                    <div class="search-areas-panel" id="searchAreasPanel">
+                        <h4>検索対象エリア</h4>
+                        <div class="hierarchy-info" id="hierarchyInfo"></div>
+                        <div class="areas-section" id="locationSection">
+                            <div class="areas-section-title location">所在地</div>
+                            <div class="area-tags" id="locationTags"></div>
+                        </div>
+                        <div class="areas-section" id="lineSection">
+                            <div class="areas-section-title line">沿線・駅</div>
+                            <div class="area-tags" id="lineTags"></div>
+                        </div>
                     </div>
                     <iframe id="pdfViewer" class="pdf-viewer" frameborder="0"></iframe>
                     <div class="pdf-actions">
@@ -414,13 +486,8 @@
             // Set info
             pdfInfo.textContent = `${data.count || 1}件の物件`;
 
-            // Also show searched locations if available
-            if (data.searched_locations && data.searched_locations.length > 0) {
-                const locations = data.searched_locations.map(loc =>
-                    `${loc.prefecture} ${loc.city}`
-                ).join(', ');
-                pdfInfo.textContent += ` - ${locations}`;
-            }
+            // Show search areas panel
+            showSearchAreas(data.parsed_requirements, data.searched_locations);
 
             // Display property IDs
             if (data.propertyIds && data.propertyIds.length > 0) {
@@ -483,6 +550,97 @@
                     <span class="detail-value ${valueClass}">${value}</span>
                 </div>
             `;
+        }
+
+        // Show search areas
+        function showSearchAreas(parsedRequirements, searchedLocations) {
+            const panel = document.getElementById('searchAreasPanel');
+            const hierarchyInfo = document.getElementById('hierarchyInfo');
+            const locationTags = document.getElementById('locationTags');
+            const lineTags = document.getElementById('lineTags');
+            const locationSection = document.getElementById('locationSection');
+            const lineSection = document.getElementById('lineSection');
+
+            // Clear previous content
+            hierarchyInfo.innerHTML = '';
+            locationTags.innerHTML = '';
+            lineTags.innerHTML = '';
+
+            // Priority: use searchedLocations (actual searched locations)
+            if (searchedLocations && searchedLocations.length > 0) {
+                // Extract prefecture/city info
+                const prefectures = [...new Set(searchedLocations.map(loc => loc.prefecture).filter(Boolean))];
+                const cities = [...new Set(searchedLocations.map(loc => loc.city).filter(Boolean))];
+
+                if (prefectures.length > 0) {
+                    hierarchyInfo.innerHTML = `<span>${prefectures.join('、')}</span> → <span>${cities.join('、')}</span>`;
+                }
+
+                locationSection.style.display = 'block';
+                searchedLocations.forEach(loc => {
+                    const tag = document.createElement('span');
+                    tag.className = 'area-tag location';
+                    const townInfo = loc.town ? ` ${loc.town}` : '';
+                    tag.textContent = `${loc.city}${townInfo}`.trim();
+                    locationTags.appendChild(tag);
+                });
+
+                lineSection.style.display = 'none';
+                panel.classList.add('active');
+                return;
+            }
+
+            // Fallback: use parsedRequirements.searchOptions
+            if (!parsedRequirements || !parsedRequirements.searchOptions || parsedRequirements.searchOptions.length === 0) {
+                panel.classList.remove('active');
+                return;
+            }
+
+            // Show hierarchy info
+            if (parsedRequirements.hierarchyAnalysis) {
+                const h = parsedRequirements.hierarchyAnalysis;
+                hierarchyInfo.innerHTML = `
+                    <span>${h.prefecture || ''}</span> →
+                    <span>${h.mainCity || ''}</span>
+                    ${h.nearbyDistricts && h.nearbyDistricts.length > 0 ?
+                        ' （周辺: ' + h.nearbyDistricts.join('、') + '）' : ''}
+                `;
+            } else if (parsedRequirements.locations && parsedRequirements.locations.length > 0) {
+                const loc = parsedRequirements.locations[0];
+                hierarchyInfo.innerHTML = `<span>${loc.prefecture || ''}</span> → <span>${loc.city || ''}</span>`;
+            }
+
+            // Categorize search options
+            const locations = parsedRequirements.searchOptions.filter(opt => opt.searchMethod === 'location');
+            const lines = parsedRequirements.searchOptions.filter(opt => opt.searchMethod === 'line');
+
+            // Show locations
+            if (locations.length > 0) {
+                locationSection.style.display = 'block';
+                locations.forEach(loc => {
+                    const tag = document.createElement('span');
+                    tag.className = 'area-tag location';
+                    tag.textContent = `${loc.city} ${loc.town || ''}`.trim();
+                    locationTags.appendChild(tag);
+                });
+            } else {
+                locationSection.style.display = 'none';
+            }
+
+            // Show lines
+            if (lines.length > 0) {
+                lineSection.style.display = 'block';
+                lines.forEach(line => {
+                    const tag = document.createElement('span');
+                    tag.className = 'area-tag line';
+                    tag.textContent = `${line.line} ${line.station}`;
+                    lineTags.appendChild(tag);
+                });
+            } else {
+                lineSection.style.display = 'none';
+            }
+
+            panel.classList.add('active');
         }
 
         // Load results on page load

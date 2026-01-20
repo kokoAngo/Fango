@@ -74,6 +74,65 @@
 
         .error { background: #fee; color: #c33; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
         .error.active { display: block; }
+
+        /* 搜索区域显示框样式 */
+        .search-areas-panel {
+            display: none;
+            background: #f8f9ff;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .search-areas-panel.active { display: block; }
+        .search-areas-panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-areas-panel h3::before { content: "🔍"; }
+
+        .areas-section { margin-bottom: 15px; }
+        .areas-section:last-child { margin-bottom: 0; }
+        .areas-section-title {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .areas-section-title.location::before { content: "📍 "; }
+        .areas-section-title.line::before { content: "🚃 "; }
+
+        .area-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .area-tag {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 0.9em;
+            color: #333;
+            transition: all 0.2s;
+        }
+        .area-tag.location { border-color: #667eea; color: #667eea; }
+        .area-tag.line { border-color: #27ae60; color: #27ae60; }
+        .area-tag:hover { transform: scale(1.05); }
+
+        .hierarchy-info {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .hierarchy-info span { color: #667eea; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -129,6 +188,20 @@
             </div>
 
             <button class="search-button" id="searchButton" disabled>物件を検索する</button>
+
+            <!-- 搜索区域显示面板 -->
+            <div class="search-areas-panel" id="searchAreasPanel">
+                <h3>検索対象エリア</h3>
+                <div class="hierarchy-info" id="hierarchyInfo"></div>
+                <div class="areas-section" id="locationSection">
+                    <div class="areas-section-title location">所在地</div>
+                    <div class="area-tags" id="locationTags"></div>
+                </div>
+                <div class="areas-section" id="lineSection">
+                    <div class="areas-section-title line">沿線・駅</div>
+                    <div class="area-tags" id="lineTags"></div>
+                </div>
+            </div>
 
             <div class="loading" id="loading">
                 <div class="spinner"></div>
@@ -198,9 +271,18 @@
                     throw new Error(data.error || '検索に失敗しました');
                 }
 
+                // 显示搜索区域信息
+                if (data.parsed_requirements) {
+                    showSearchAreas(data.parsed_requirements, data.searched_locations);
+                }
+
                 localStorage.setItem('searchResults', JSON.stringify(data));
                 localStorage.setItem('userRequirements', userRequirements);
-                window.location.href = '/results.html';
+
+                // 延迟跳转，让用户看到搜索区域
+                setTimeout(() => {
+                    window.location.href = '/results.html';
+                }, 1500);
             } catch (error) {
                 showError(error.message);
                 hideLoading();
@@ -225,6 +307,102 @@
 
         function hideError() {
             document.getElementById('error').classList.remove('active');
+        }
+
+        // 显示搜索区域
+        function showSearchAreas(data, searchedLocations) {
+            const panel = document.getElementById('searchAreasPanel');
+            const hierarchyInfo = document.getElementById('hierarchyInfo');
+            const locationTags = document.getElementById('locationTags');
+            const lineTags = document.getElementById('lineTags');
+            const locationSection = document.getElementById('locationSection');
+            const lineSection = document.getElementById('lineSection');
+
+            // 清空之前的内容
+            hierarchyInfo.innerHTML = '';
+            locationTags.innerHTML = '';
+            lineTags.innerHTML = '';
+
+            // 优先使用 searchedLocations（实际搜索的地点）
+            if (searchedLocations && searchedLocations.length > 0) {
+                // 提取都道府县信息
+                const prefectures = [...new Set(searchedLocations.map(loc => loc.prefecture).filter(Boolean))];
+                const cities = [...new Set(searchedLocations.map(loc => loc.city).filter(Boolean))];
+
+                if (prefectures.length > 0) {
+                    hierarchyInfo.innerHTML = `<span>${prefectures.join('、')}</span> → <span>${cities.join('、')}</span>`;
+                }
+
+                locationSection.style.display = 'block';
+                searchedLocations.forEach(loc => {
+                    const tag = document.createElement('span');
+                    tag.className = 'area-tag location';
+                    const townInfo = loc.town ? ` ${loc.town}` : '';
+                    tag.textContent = `${loc.city}${townInfo}`.trim();
+                    locationTags.appendChild(tag);
+                });
+
+                lineSection.style.display = 'none';
+                panel.classList.add('active');
+                return;
+            }
+
+            // 使用 searchOptions
+            if (!data || !data.searchOptions || data.searchOptions.length === 0) {
+                panel.classList.remove('active');
+                return;
+            }
+
+            // 显示层次信息
+            if (data.hierarchyAnalysis) {
+                const h = data.hierarchyAnalysis;
+                hierarchyInfo.innerHTML = `
+                    <span>${h.prefecture || ''}</span> →
+                    <span>${h.mainCity || ''}</span>
+                    ${h.nearbyDistricts && h.nearbyDistricts.length > 0 ?
+                        ' （周辺: ' + h.nearbyDistricts.join('、') + '）' : ''}
+                `;
+            } else if (data.locations && data.locations.length > 0) {
+                const loc = data.locations[0];
+                hierarchyInfo.innerHTML = `<span>${loc.prefecture || ''}</span> → <span>${loc.city || ''}</span>`;
+            }
+
+            // 分类搜索选项
+            const locations = data.searchOptions.filter(opt => opt.searchMethod === 'location');
+            const lines = data.searchOptions.filter(opt => opt.searchMethod === 'line');
+
+            // 显示所在地
+            if (locations.length > 0) {
+                locationSection.style.display = 'block';
+                locations.forEach(loc => {
+                    const tag = document.createElement('span');
+                    tag.className = 'area-tag location';
+                    tag.textContent = `${loc.city} ${loc.town || ''}`.trim();
+                    locationTags.appendChild(tag);
+                });
+            } else {
+                locationSection.style.display = 'none';
+            }
+
+            // 显示沿线
+            if (lines.length > 0) {
+                lineSection.style.display = 'block';
+                lines.forEach(line => {
+                    const tag = document.createElement('span');
+                    tag.className = 'area-tag line';
+                    tag.textContent = `${line.line} ${line.station}`;
+                    lineTags.appendChild(tag);
+                });
+            } else {
+                lineSection.style.display = 'none';
+            }
+
+            panel.classList.add('active');
+        }
+
+        // 隐藏搜索区域
+        function hideSearchAreas() {
+            document.getElementById('searchAreasPanel').classList.remove('active');
         }
 
         loadMBTITypes();

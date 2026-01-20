@@ -7,7 +7,12 @@ require('dotenv').config();
 const reinsService = require('./services/reinsService');
 const requirementsParser = require('./services/requirementsParser');
 const aiRequirementsParser = require('./services/aiRequirementsParser');
+const multiAgentParser = require('./services/multiAgentParser');
 const mbtiData = require('./housing_mbti_presets.json');
+
+// 选择使用哪个 AI 解析器（环境变量 USE_MULTI_AGENT=true 启用多 Agent 系统）
+const USE_MULTI_AGENT = process.env.USE_MULTI_AGENT === 'true';
+console.log(`[Server] AI Parser: ${USE_MULTI_AGENT ? 'Multi-Agent System' : 'Legacy Parser'}`);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,13 +66,26 @@ app.post('/api/search', async (req, res) => {
     }
 
     // AI で需求を解析（位置情報も含めて一括解析、担当者コメントも考慮）
-    let parsedRequirements = await aiRequirementsParser.parse(userRequirements, {}, agentNotes || '');
+    let parsedRequirements;
     let reinsFields;
+
+    // 多 Agent システムまたは従来のパーサーを使用
+    if (USE_MULTI_AGENT) {
+      console.log('\n[Multi-Agent] 多エージェントシステムで解析中...');
+      parsedRequirements = await multiAgentParser.parse(userRequirements, {}, agentNotes || '');
+      if (parsedRequirements) {
+        reinsFields = multiAgentParser.toReinsFields(parsedRequirements);
+      }
+    } else {
+      parsedRequirements = await aiRequirementsParser.parse(userRequirements, {}, agentNotes || '');
+      if (parsedRequirements) {
+        reinsFields = aiRequirementsParser.toReinsFields(parsedRequirements);
+      }
+    }
 
     if (parsedRequirements) {
       // AI 解析成功
       console.log('\n[AI Parser] 解析成功');
-      reinsFields = aiRequirementsParser.toReinsFields(parsedRequirements);
     } else {
       // AI 解析失敗時は従来のパーサーにフォールバック
       console.log('\n[AI Parser] 解析失敗、従来パーサーにフォールバック');
@@ -119,8 +137,8 @@ app.post('/api/search', async (req, res) => {
       }
     }
 
-    // 複数位置で順次検索（100件以上見つかるまで、最大10回まで）
-    const MAX_SEARCH_ATTEMPTS = 10;  // 最大検索オプション数
+    // 複数位置で順次検索（最大15回まで）
+    const MAX_SEARCH_ATTEMPTS = 15;  // 最大検索オプション数（増加）
     let allProperties = [];
     let searchedLocations = [];
     let allPdfPaths = [];  // 複数PDFを収集
@@ -163,8 +181,8 @@ app.post('/api/search', async (req, res) => {
       downloadDir: searchDownloadDir
     };
 
-    // 並列検索を使用（最大5並列）
-    const MAX_CONCURRENT = 5;
+    // 並列検索を使用（最大8並列）
+    const MAX_CONCURRENT = 8;
     const optionsToSearch = itemsToSearch.slice(0, Math.min(itemsToSearch.length, MAX_SEARCH_ATTEMPTS));
 
     console.log(`\n⚡ 並列検索を開始: ${optionsToSearch.length}件の検索オプション（最大${MAX_CONCURRENT}並列）`);
@@ -328,7 +346,13 @@ app.post('/api/parse-requirements', async (req, res) => {
     }
 
     // AI で需求を解析（担当者コメントも考慮）
-    const parsedRequirements = await aiRequirementsParser.parse(userRequirements, context || {}, agentNotes || '');
+    let parsedRequirements;
+    if (USE_MULTI_AGENT) {
+      console.log('[Multi-Agent] 多エージェントシステムで解析中...');
+      parsedRequirements = await multiAgentParser.parse(userRequirements, context || {}, agentNotes || '');
+    } else {
+      parsedRequirements = await aiRequirementsParser.parse(userRequirements, context || {}, agentNotes || '');
+    }
 
     if (!parsedRequirements) {
       return res.status(400).json({
@@ -615,6 +639,37 @@ app.post('/api/search-concurrent', async (req, res) => {
     res.status(500).json({
       error: '並列検索に失敗しました',
       message: error.message
+    });
+  }
+});
+
+/**
+ * 获取 AI 解析器状态和性能指标
+ * GET /api/parser-status
+ */
+app.get('/api/parser-status', (req, res) => {
+  res.json({
+    useMultiAgent: USE_MULTI_AGENT,
+    metrics: USE_MULTI_AGENT ? multiAgentParser.getMetrics() : null
+  });
+});
+
+/**
+ * 切换 AI 解析器（仅用于测试）
+ * POST /api/toggle-parser
+ */
+app.post('/api/toggle-parser', (req, res) => {
+  const { useMultiAgent } = req.body;
+  if (typeof useMultiAgent === 'boolean') {
+    multiAgentParser.setEnabled(useMultiAgent);
+    res.json({
+      success: true,
+      useMultiAgent: multiAgentParser.isEnabled(),
+      message: useMultiAgent ? 'Multi-Agent System enabled' : 'Legacy Parser enabled'
+    });
+  } else {
+    res.status(400).json({
+      error: 'useMultiAgent must be a boolean'
     });
   }
 });
