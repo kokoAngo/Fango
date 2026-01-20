@@ -2519,36 +2519,70 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
       // 方法1: 「ページ内全選択」ボタンを優先使用（高速）
       if (pageInfo.hasSelectAllBtn) {
         console.log('\n「ページ内全選択」ボタンを使用（高速モード）...');
+
+        // ページ全選択ボタンをクリック（より確実な方法）
         const clicked = await this.page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button'));
           const selectAllBtn = buttons.find(b => b.textContent?.includes('ページ内全選択'));
           if (selectAllBtn) {
-            selectAllBtn.click();
+            // イベントを確実に発火させる
+            selectAllBtn.focus();
+            selectAllBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
             return true;
           }
           return false;
         });
 
+        // クリック後に追加で待機
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // ページ全選択の効果を確認するためスクリーンショット
+        await this.page.screenshot({ path: 'debug-after-select-all.png', fullPage: true });
+
         if (clicked) {
           console.log('  ✓ ページ内全選択を実行');
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
-          // 全選択後に物件IDを抽出
+          // 全選択後に物件IDを抽出（複数の方法を試す）
           const allIds = await this.page.evaluate(() => {
             const ids = [];
+
+            // 方法1: チェック済みチェックボックスから抽出
             const checkedBoxes = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
             for (const cb of checkedBoxes) {
               let parent = cb.parentElement;
               for (let i = 0; i < 10 && parent; i++) {
                 const text = parent.innerText || '';
                 const idMatch = text.match(/(\d{12})/);
-                if (idMatch) {
+                if (idMatch && !ids.includes(idMatch[1])) {
                   ids.push(idMatch[1]);
                   break;
                 }
                 parent = parent.parentElement;
               }
             }
+
+            // 方法2: チェックボックスがない場合、選択された行から抽出（REINS特有）
+            if (ids.length === 0) {
+              // 選択状態のクラスを持つ行を探す
+              const selectedRows = document.querySelectorAll('tr.selected, tr[class*="select"], tr[style*="background"]');
+              for (const row of selectedRows) {
+                const text = row.innerText || '';
+                const idMatch = text.match(/(\d{12})/);
+                if (idMatch && !ids.includes(idMatch[1])) {
+                  ids.push(idMatch[1]);
+                }
+              }
+            }
+
+            // 方法3: ページ内のすべての12桁物件番号を抽出
+            if (ids.length === 0) {
+              const pageText = document.body.innerText;
+              const matches = pageText.match(/\b\d{12}\b/g) || [];
+              const uniqueIds = [...new Set(matches)];
+              ids.push(...uniqueIds);
+            }
+
             return ids;
           });
 
@@ -2653,17 +2687,25 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
           console.log('確認ダイアログを処理中...');
           const confirmResult = await this.page.evaluate(() => {
             // モーダルダイアログを探す
-            const modals = document.querySelectorAll('.modal, [role="dialog"], .popup, .dialog');
+            const modals = document.querySelectorAll('.modal, [role="dialog"], .popup, .dialog, .alert');
             for (const modal of modals) {
               const style = window.getComputedStyle(modal);
               if (style.display !== 'none' && style.visibility !== 'hidden') {
+                const modalText = modal.innerText || '';
+
+                // エラーメッセージのチェック
+                const isError = modalText.includes('選択してください') ||
+                                modalText.includes('エラー') ||
+                                modalText.includes('失敗') ||
+                                modalText.includes('できません');
+
                 // 確認/OKボタンを探してクリック
                 const confirmButtons = modal.querySelectorAll('button');
                 for (const btn of confirmButtons) {
                   const text = btn.textContent?.trim() || '';
-                  if (text.includes('OK') || text.includes('確認') || text.includes('はい') || text.includes('ダウンロード') || text.includes('取得')) {
+                  if (text.includes('OK') || text.includes('確認') || text.includes('はい') || text.includes('ダウンロード') || text.includes('取得') || text.includes('一括取得')) {
                     btn.click();
-                    return { clicked: true, text: text };
+                    return { clicked: true, text: text, isError: isError, message: modalText.substring(0, 100) };
                   }
                 }
               }
@@ -2673,17 +2715,21 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
             const allButtons = document.querySelectorAll('button');
             for (const btn of allButtons) {
               const text = btn.textContent?.trim() || '';
-              if (text === 'OK' || text === '確認' || text === 'はい') {
+              if (text === 'OK' || text === '確認' || text === 'はい' || text === '一括取得') {
                 btn.click();
-                return { clicked: true, text: text };
+                return { clicked: true, text: text, isError: false, message: '' };
               }
             }
 
-            return { clicked: false };
+            return { clicked: false, isError: false, message: '' };
           });
 
           if (confirmResult.clicked) {
-            console.log(`✓ 確認ボタン「${confirmResult.text}」をクリック`);
+            if (confirmResult.isError) {
+              console.log(`⚠ エラーダイアログ: ${confirmResult.message}`);
+            } else {
+              console.log(`✓ 確認ボタン「${confirmResult.text}」をクリック`);
+            }
           }
 
           await new Promise(resolve => setTimeout(resolve, 3000));

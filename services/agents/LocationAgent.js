@@ -68,19 +68,26 @@ class LocationAgent extends BaseAgent {
       landmark: intentResult.extractedInfo?.landmark
     });
 
-    // 地域検索が不要な場合（明示的な地域指定がある場合）
+    // 【優先1】沿線検索（searchType が line の場合）
+    if (intentResult.searchType === 'line') {
+      // 明示的な駅指定がある場合
+      if (intentResult.extractedInfo?.explicitStations?.length > 0) {
+        return this.buildFromStations(intentResult);
+      }
+      // 駅指定がなくても路線指定がある場合
+      if (intentResult.extractedInfo?.explicitLines?.length > 0) {
+        return this.buildFromLines(intentResult);
+      }
+    }
+
+    // 【優先2】地域検索が不要な場合（明示的な地域指定がある場合）
     if (!intentResult.needsAreaSearch && intentResult.extractedInfo?.explicitLocations?.length > 0) {
       return this.buildFromExplicitLocations(intentResult);
     }
 
-    // ランドマークベースの検索
+    // 【優先3】ランドマークベースの検索
     if (intentResult.extractedInfo?.landmark) {
       return await this.searchNearbyAreas(intentResult);
-    }
-
-    // 沿線検索
-    if (intentResult.searchType === 'line' && intentResult.extractedInfo?.explicitStations?.length > 0) {
-      return this.buildFromStations(intentResult);
     }
 
     // フォールバック
@@ -205,6 +212,71 @@ ${cacheInfo ? '可能な限りキャッシュリストにある町丁目を優�
       searchStrategy: 'sequential',
       totalOptions: recommendations.length,
       source: 'explicit_stations'
+    };
+  }
+
+  /**
+   * 路線指定から推薦リストを構築（駅指定がない場合）
+   */
+  buildFromLines(intentResult) {
+    const lines = intentResult.extractedInfo.explicitLines || [];
+    const prefecture = intentResult.extractedInfo.prefecture || '東京都';
+
+    this.log('Building from lines', { lines, prefecture });
+
+    // REINSキャッシュから路線の駅リストを取得
+    const stationCache = reinsCache.getStationData();
+    const recommendations = [];
+    let id = 1;
+
+    for (const lineName of lines) {
+      // キャッシュから路線に属する駅を検索
+      const matchingStations = stationCache.filter(s =>
+        s.line && s.line.includes(lineName)
+      );
+
+      if (matchingStations.length > 0) {
+        // 最大5駅まで追加
+        const stationsToAdd = matchingStations.slice(0, 5);
+        for (const stationData of stationsToAdd) {
+          recommendations.push({
+            id: id++,
+            type: 'line',
+            prefecture: prefecture,
+            city: null,
+            line: stationData.line || lineName,
+            station: stationData.station,
+            walkMinutes: 10,
+            score: 0.85,
+            reason: `${lineName}の駅`,
+            features: []
+          });
+        }
+      } else {
+        // キャッシュにない場合、路線名のみで1件追加
+        recommendations.push({
+          id: id++,
+          type: 'line',
+          prefecture: prefecture,
+          city: null,
+          line: lineName,
+          station: null,  // 駅未指定
+          walkMinutes: 10,
+          score: 0.8,
+          reason: 'ユーザー指定路線',
+          features: []
+        });
+      }
+    }
+
+    this.log('Built line recommendations', { count: recommendations.length });
+
+    return {
+      centerPoint: null,
+      recommendations: recommendations,
+      searchStrategy: recommendations.length > 3 ? 'parallel' : 'sequential',
+      totalOptions: recommendations.length,
+      source: 'explicit_lines'
     };
   }
 

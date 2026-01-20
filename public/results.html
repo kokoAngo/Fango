@@ -568,24 +568,52 @@
 
             // Priority: use searchedLocations (actual searched locations)
             if (searchedLocations && searchedLocations.length > 0) {
-                // Extract prefecture/city info
-                const prefectures = [...new Set(searchedLocations.map(loc => loc.prefecture).filter(Boolean))];
-                const cities = [...new Set(searchedLocations.map(loc => loc.city).filter(Boolean))];
+                // 判断是沿線搜索还是所在地搜索
+                const isLineSearch = searchedLocations.some(loc => loc.line || loc.station);
+                const isLocationSearch = searchedLocations.some(loc => loc.city || loc.town);
 
-                if (prefectures.length > 0) {
-                    hierarchyInfo.innerHTML = `<span>${prefectures.join('、')}</span> → <span>${cities.join('、')}</span>`;
+                if (isLineSearch) {
+                    // 沿線搜索结果
+                    const lines = [...new Set(searchedLocations.map(loc => loc.line).filter(Boolean))];
+
+                    if (lines.length > 0) {
+                        hierarchyInfo.innerHTML = `<span>🚃 ${lines.join('、')}</span>`;
+                    }
+
+                    lineSection.style.display = 'block';
+                    locationSection.style.display = 'none';
+                    searchedLocations.forEach(loc => {
+                        if (loc.line || loc.station) {
+                            const tag = document.createElement('span');
+                            tag.className = 'area-tag line';
+                            const stationInfo = loc.station ? `${loc.station}駅` : '';
+                            const lineInfo = loc.line ? `(${loc.line})` : '';
+                            tag.textContent = `${stationInfo} ${lineInfo}`.trim();
+                            lineTags.appendChild(tag);
+                        }
+                    });
+                } else if (isLocationSearch) {
+                    // 所在地搜索结果
+                    const prefectures = [...new Set(searchedLocations.map(loc => loc.prefecture).filter(Boolean))];
+                    const cities = [...new Set(searchedLocations.map(loc => loc.city).filter(Boolean))];
+
+                    if (prefectures.length > 0) {
+                        hierarchyInfo.innerHTML = `<span>${prefectures.join('、')}</span> → <span>${cities.join('、')}</span>`;
+                    }
+
+                    locationSection.style.display = 'block';
+                    lineSection.style.display = 'none';
+                    searchedLocations.forEach(loc => {
+                        if (loc.city) {
+                            const tag = document.createElement('span');
+                            tag.className = 'area-tag location';
+                            const townInfo = loc.town ? ` ${loc.town}` : '';
+                            tag.textContent = `${loc.city}${townInfo}`.trim();
+                            locationTags.appendChild(tag);
+                        }
+                    });
                 }
 
-                locationSection.style.display = 'block';
-                searchedLocations.forEach(loc => {
-                    const tag = document.createElement('span');
-                    tag.className = 'area-tag location';
-                    const townInfo = loc.town ? ` ${loc.town}` : '';
-                    tag.textContent = `${loc.city}${townInfo}`.trim();
-                    locationTags.appendChild(tag);
-                });
-
-                lineSection.style.display = 'none';
                 panel.classList.add('active');
                 return;
             }
