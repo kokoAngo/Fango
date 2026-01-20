@@ -224,12 +224,16 @@ app.post('/api/search', async (req, res) => {
         await reinsService.mergePDFs(allPdfPaths, finalPdfPath);
       }
 
-      const pdfFilename = path.basename(finalPdfPath);
-      console.log(`✓ 最終PDF: ${pdfFilename}`);
+      // DOWNLOADS_DIR からの相対パスを計算（thread_1 サブディレクトリを含む）
+      const relativePdfPath = path.relative(DOWNLOADS_DIR, finalPdfPath).replace(/\\/g, '/');
+      console.log(`✓ 最終PDF: ${relativePdfPath}`);
       console.log(`✓ 物件ID: ${allPropertyIds.length}件`);
       if (allPropertyIds.length > 0) {
         allPropertyIds.forEach((id, i) => console.log(`  [${i + 1}] ${id}`));
       }
+
+      // URL エンコード（日本語フォルダ名対応）
+      const encodedPdfUrl = '/downloads/' + relativePdfPath.split('/').map(encodeURIComponent).join('/');
 
       return res.json({
         success: true,
@@ -238,7 +242,7 @@ app.post('/api/search', async (req, res) => {
         user_requirements: userRequirements,
         parsed_requirements: parsedRequirements,
         searched_locations: searchedLocations,
-        pdfUrl: `/downloads/${searchFolderName}/${pdfFilename}`,
+        pdfUrl: encodedPdfUrl,
         count: totalPdfCount,
         propertyIds: allPropertyIds
       });
@@ -261,14 +265,16 @@ app.post('/api/search', async (req, res) => {
 
       // 結果タイプを確認
       if (result && result.type === 'pdf') {
-        const pdfFilename = path.basename(result.pdfPath);
+        // DOWNLOADS_DIR からの相対パスを計算
+        const relativePdfPath = path.relative(DOWNLOADS_DIR, result.pdfPath).replace(/\\/g, '/');
+        const encodedPdfUrl = '/downloads/' + relativePdfPath.split('/').map(encodeURIComponent).join('/');
         return res.json({
           success: true,
           type: 'pdf',
           mbti_type: mbtiName,
           user_requirements: userRequirements,
           parsed_requirements: parsedRequirements,
-          pdfUrl: `/downloads/${pdfFilename}`,
+          pdfUrl: encodedPdfUrl,
           count: result.count
         });
       } else if (result && result.type === 'properties') {
@@ -454,8 +460,9 @@ app.post('/api/search-multi-round', async (req, res) => {
         finalPdfPath = path.join(searchDownloadDir, `merged_${mergeTimestamp}.pdf`);
         await reinsService.mergePDFs(result.pdfFiles, finalPdfPath);
       }
-      const pdfFilename = path.basename(finalPdfPath);
-      finalPdfUrl = `/downloads/${searchFolderName}/${pdfFilename}`;
+      // DOWNLOADS_DIR からの相対パスを計算
+      const relativePdfPath = path.relative(DOWNLOADS_DIR, finalPdfPath).replace(/\\/g, '/');
+      finalPdfUrl = '/downloads/' + relativePdfPath.split('/').map(encodeURIComponent).join('/');
     }
 
     res.json({
@@ -578,8 +585,9 @@ app.post('/api/search-concurrent', async (req, res) => {
         await reinsService.mergePDFs(uniquePdfFiles, finalPdfPath);
         console.log(`✓ 合併完了: ${path.basename(finalPdfPath)}`);
       }
-      const pdfFilename = path.basename(finalPdfPath);
-      finalPdfUrl = `/downloads/${searchFolderName}/${pdfFilename}`;
+      // DOWNLOADS_DIR からの相対パスを計算
+      const relativePdfPath = path.relative(DOWNLOADS_DIR, finalPdfPath).replace(/\\/g, '/');
+      finalPdfUrl = '/downloads/' + relativePdfPath.split('/').map(encodeURIComponent).join('/');
     }
 
     res.json({
