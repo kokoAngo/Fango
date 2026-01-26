@@ -8,10 +8,15 @@ const reinsService = require('./services/reinsService');
 const requirementsParser = require('./services/requirementsParser');
 const aiRequirementsParser = require('./services/aiRequirementsParser');
 const multiAgentParser = require('./services/multiAgentParser');
+const reinsCache = require('./services/reinsCacheService');
+const ResultAnalysisAgent = require('./services/agents/ResultAnalysisAgent');
 const mbtiData = require('./housing_mbti_presets.json');
 
+// 結果分析Agent
+const resultAnalysisAgent = new ResultAnalysisAgent();
+
 // 选择使用哪个 AI 解析器（环境变量 USE_MULTI_AGENT=true 启用多 Agent 系统）
-const USE_MULTI_AGENT = process.env.USE_MULTI_AGENT === 'true';
+const USE_MULTI_AGENT = true;  // 默认启用 Multi-Agent
 console.log(`[Server] AI Parser: ${USE_MULTI_AGENT ? 'Multi-Agent System' : 'Legacy Parser'}`);
 
 const app = express();
@@ -674,6 +679,136 @@ app.post('/api/toggle-parser', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log('Server running on http://localhost:' + PORT);
+/**
+ * 検索結果を分析してレポートを生成
+ * POST /api/analyze-results
+ */
+app.post('/api/analyze-results', async (req, res) => {
+  try {
+    const { pdfPath, userRequirements, aiRecommendations, searchOptions, quickMode } = req.body;
+
+    if (!pdfPath) {
+      return res.status(400).json({
+        error: 'pdfPath is required'
+      });
+    }
+
+    // PDF パスを解決
+    let resolvedPdfPath = pdfPath;
+    if (!path.isAbsolute(pdfPath)) {
+      resolvedPdfPath = path.join(DOWNLOADS_DIR, pdfPath);
+    }
+
+    if (!fs.existsSync(resolvedPdfPath)) {
+      return res.status(404).json({
+        error: 'PDF file not found',
+        path: resolvedPdfPath
+      });
+    }
+
+    console.log(`[Analyze] Analyzing PDF: ${resolvedPdfPath}`);
+
+    // 分析を実行
+    const result = await resultAnalysisAgent.process({
+      pdfPath: resolvedPdfPath,
+      userRequirements,
+      aiRecommendations,
+      searchOptions
+    });
+
+    if (result.success) {
+      res.json({
+        success: true,
+        analysis: result.analysis,
+        extractedProperties: result.extractedProperties,
+        pdfPath: resolvedPdfPath
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error,
+        rawResponse: result.rawResponse
+      });
+    }
+
+  } catch (error) {
+    console.error('Analysis error:', error);
+    res.status(500).json({
+      error: '結果分析に失敗しました',
+      message: error.message
+    });
+  }
 });
+
+/**
+ * 最新の検索結果PDFを分析
+ * GET /api/analyze-latest
+ */
+app.get('/api/analyze-latest', async (req, res) => {
+  try {
+    // 最新の merged PDF を探す
+    const searchDirs = fs.readdirSync(DOWNLOADS_DIR)
+      .filter(f => fs.statSync(path.join(DOWNLOADS_DIR, f)).isDirectory())
+      .sort()
+      .reverse();
+
+    let latestPdf = null;
+    for (const dir of searchDirs) {
+      const dirPath = path.join(DOWNLOADS_DIR, dir);
+      const files = fs.readdirSync(dirPath);
+      const mergedPdf = files.find(f => f.startsWith('merged_') && f.endsWith('.pdf'));
+      if (mergedPdf) {
+        latestPdf = path.join(dirPath, mergedPdf);
+        break;
+      }
+    }
+
+    if (!latestPdf) {
+      return res.status(404).json({
+        error: 'No merged PDF found in downloads'
+      });
+    }
+
+    console.log(`[Analyze] Found latest PDF: ${latestPdf}`);
+
+    const result = await resultAnalysisAgent.process({
+      pdfPath: latestPdf,
+      userRequirements: req.query.requirements || null,
+      aiRecommendations: null,
+      searchOptions: null
+    });
+
+    res.json({
+      success: result.success,
+      pdfPath: latestPdf,
+      analysis: result.analysis,
+      extractedProperties: result.extractedProperties,
+      error: result.error
+    });
+
+  } catch (error) {
+    console.error('Latest analysis error:', error);
+    res.status(500).json({
+      error: '最新結果の分析に失敗しました',
+      message: error.message
+    });
+  }
+});
+
+// 启动服务器（先初始化数据库）
+async function startServer() {
+  try {
+    // 初始化数据库（会自动迁移JSON数据）
+    await reinsCache.initialize();
+    console.log('[Server] Database ready');
+
+    app.listen(PORT, () => {
+      console.log('Server running on http://localhost:' + PORT);
+    });
+  } catch (error) {
+    console.error('[Server] Failed to start:', error.message);
+    process.exit(1);
+  }
+}
+
+startServer();

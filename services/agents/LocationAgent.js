@@ -72,11 +72,11 @@ class LocationAgent extends BaseAgent {
     if (intentResult.searchType === 'line') {
       // 明示的な駅指定がある場合
       if (intentResult.extractedInfo?.explicitStations?.length > 0) {
-        return this.buildFromStations(intentResult);
+        return await this.buildFromStations(intentResult);
       }
       // 駅指定がなくても路線指定がある場合
       if (intentResult.extractedInfo?.explicitLines?.length > 0) {
-        return this.buildFromLines(intentResult);
+        return await this.buildFromLines(intentResult);
       }
     }
 
@@ -105,10 +105,10 @@ class LocationAgent extends BaseAgent {
     // キャッシュから町丁目リストを取得
     let cacheInfo = '';
     if (prefecture) {
-      const locationSummary = reinsCache.generateLocationSummaryForAI(prefecture);
-      const lineSummary = reinsCache.generateLineSummaryForAI(prefecture);
+      const locationSummary = await reinsCache.generateLocationSummaryForAI(prefecture);
+      const lineSummary = await reinsCache.generateLineSummaryForAI(prefecture);
 
-      const stats = reinsCache.getStats();
+      const stats = await reinsCache.getStats();
       if (stats.location.towns > 0 || stats.line.stations > 0) {
         cacheInfo = `
 【REINSキャッシュ情報】
@@ -187,29 +187,57 @@ ${cacheInfo ? '可能な限りキャッシュリストにある町丁目を優�
 
   /**
    * 駅指定から推薦リストを構築
+   * データベースを使用して駅が属する路線を正確に特定
    */
-  buildFromStations(intentResult) {
+  async buildFromStations(intentResult) {
     const stations = intentResult.extractedInfo.explicitStations;
     const lines = intentResult.extractedInfo.explicitLines;
     const prefecture = intentResult.extractedInfo.prefecture || '東京都';
 
-    const recommendations = stations.map((station, index) => ({
-      id: index + 1,
-      type: 'line',
-      prefecture: prefecture,
-      city: null,  // 駅からは市区町村特定困難
-      line: lines[index] || lines[0] || null,
-      station: station,
-      walkMinutes: 10,
-      score: 0.9 - (index * 0.05),
-      reason: 'ユーザー指定駅',
-      features: []
-    }));
+    this.log('Building from stations with DB lookup', {
+      stations,
+      lines,
+      prefecture
+    });
+
+    const recommendations = [];
+
+    for (let index = 0; index < stations.length; index++) {
+      const station = stations[index];
+
+      // データベースで駅が属する路線を検索
+      let matchedLine = null;
+      if (lines.length > 0) {
+        matchedLine = await reinsCache.findLineForStation(prefecture, station, lines);
+      }
+
+      // 見つからない場合は最初の路線をフォールバックとして使用
+      const finalLine = matchedLine || lines[0] || null;
+
+      if (matchedLine) {
+        this.log(`Station matched: ${station} → ${matchedLine}`);
+      } else if (lines.length > 0) {
+        this.log(`Station not found in DB, using fallback: ${station} → ${finalLine}`);
+      }
+
+      recommendations.push({
+        id: index + 1,
+        type: 'line',
+        prefecture: prefecture,
+        city: null,
+        line: finalLine,
+        station: station,
+        walkMinutes: 10,
+        score: 0.9 - (index * 0.02),
+        reason: matchedLine ? `${matchedLine}の駅` : 'ユーザー指定駅',
+        features: []
+      });
+    }
 
     return {
       centerPoint: null,
       recommendations: recommendations,
-      searchStrategy: 'sequential',
+      searchStrategy: recommendations.length > 3 ? 'parallel' : 'sequential',
       totalOptions: recommendations.length,
       source: 'explicit_stations'
     };
@@ -218,54 +246,69 @@ ${cacheInfo ? '可能な限りキャッシュリストにある町丁目を優�
   /**
    * 路線指定から推薦リストを構築（駅指定がない場合）
    */
-  buildFromLines(intentResult) {
+  async buildFromLines(intentResult) {
     const lines = intentResult.extractedInfo.explicitLines || [];
     const prefecture = intentResult.extractedInfo.prefecture || '東京都';
+    const stations = intentResult.extractedInfo.explicitStations || [];
 
-    this.log('Building from lines', { lines, prefecture });
+    this.log('Building from lines', { lines, prefecture, stations });
 
-    // REINSキャッシュから路線の駅リストを取得
-    const stationCache = reinsCache.getStationData();
     const recommendations = [];
     let id = 1;
 
     for (const lineName of lines) {
-      // キャッシュから路線に属する駅を検索
-      const matchingStations = stationCache.filter(s =>
-        s.line && s.line.includes(lineName)
-      );
-
-      if (matchingStations.length > 0) {
-        // 最大5駅まで追加
-        const stationsToAdd = matchingStations.slice(0, 5);
-        for (const stationData of stationsToAdd) {
+      // 【優先1】ユーザー指定の駅がある場合はそれを使用
+      if (stations.length > 0) {
+        for (const stationName of stations) {
           recommendations.push({
             id: id++,
             type: 'line',
             prefecture: prefecture,
             city: null,
-            line: stationData.line || lineName,
-            station: stationData.station,
+            line: lineName,
+            station: stationName,
             walkMinutes: 10,
-            score: 0.85,
-            reason: `${lineName}の駅`,
+            score: 0.9,
+            reason: 'ユーザー指定駅',
             features: []
           });
         }
       } else {
-        // キャッシュにない場合、路線名のみで1件追加
-        recommendations.push({
-          id: id++,
-          type: 'line',
-          prefecture: prefecture,
-          city: null,
-          line: lineName,
-          station: null,  // 駅未指定
-          walkMinutes: 10,
-          score: 0.8,
-          reason: 'ユーザー指定路線',
-          features: []
-        });
+        // 【優先2】ユーザー指定がない場合、キャッシュから取得
+        const cachedStations = await reinsCache.getStations(prefecture, lineName);
+
+        if (cachedStations && cachedStations.length > 0) {
+          // キャッシュから最大5駅まで追加
+          const stationsToAdd = cachedStations.slice(0, 5);
+          for (const stationName of stationsToAdd) {
+            recommendations.push({
+              id: id++,
+              type: 'line',
+              prefecture: prefecture,
+              city: null,
+              line: lineName,
+              station: stationName,
+              walkMinutes: 10,
+              score: 0.85,
+              reason: `${lineName}の駅`,
+              features: []
+            });
+          }
+        } else {
+          // キャッシュも駅指定もない場合、路線名のみで1件追加
+          recommendations.push({
+            id: id++,
+            type: 'line',
+            prefecture: prefecture,
+            city: null,
+            line: lineName,
+            station: null,  // 駅未指定
+            walkMinutes: 10,
+            score: 0.8,
+            reason: 'ユーザー指定路線',
+            features: []
+          });
+        }
       }
     }
 

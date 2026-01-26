@@ -198,6 +198,26 @@ class RequirementsParser {
     if (stationRangeMatch) {
       result.startStation = stationRangeMatch[1];
       result.endStation = stationRangeMatch[2];
+    } else if (result.line) {
+      // 路線名が検出された場合、「駅」なしの駅名区間も試す
+      // 例: "副都心線で 池袋〜雑司が谷〜西早稲田"
+
+      // 路線名を除去したテキストで駅名を探す
+      const textWithoutLine = text.replace(result.line, '').replace(/[でにの、。\s]+/g, ' ').trim();
+
+      // 3駅以上の区間: A〜B〜C（最初と最後を取る）
+      const threeStationMatch = textWithoutLine.match(/([^\s〜～\-]+)[〜～\-]([^\s〜～\-]+)[〜～\-]([^\s〜～\-]+)/);
+      if (threeStationMatch) {
+        result.startStation = threeStationMatch[1].replace(/駅$/, '');
+        result.endStation = threeStationMatch[3].replace(/駅$/, '');
+      } else {
+        // 2駅の区間: A〜B
+        const twoStationMatch = textWithoutLine.match(/([^\s〜～\-]+)[〜～\-]([^\s〜～\-]+)/);
+        if (twoStationMatch) {
+          result.startStation = twoStationMatch[1].replace(/駅$/, '');
+          result.endStation = twoStationMatch[2].replace(/駅$/, '');
+        }
+      }
     } else {
       // 提取单一车站名
       const stationMatch = text.match(/([^\s、。・\n]+)駅/);

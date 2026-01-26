@@ -499,7 +499,38 @@ ${JSON.stringify(context, null, 2)}
         detailSelected = await this.selectFirstOption(0);
         console.log('           → ' + (detailSelected ? '✓ 成功（最初のオプション）' : '✗ 失敗'));
       }
-      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // 選択後、町丁目リストが更新されるまで待機
+      console.log('           → 町丁目リストの更新を待機中...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 選択が正しく反映されたか確認
+      const verifyResult = await this.page.evaluate(() => {
+        const modal = document.querySelector('.modal.show, .modal[style*="display: block"], [role="dialog"], .modal');
+        const container = modal || document;
+        const selects = container.querySelectorAll('select.p-listbox-input, select.custom-select, select');
+        if (selects.length >= 2) {
+          const leftSelect = selects[0];
+          const rightSelect = selects[1];
+          const leftSelected = leftSelect.options[leftSelect.selectedIndex];
+          const rightOptions = Array.from(rightSelect.options).map(o => o.text.trim());
+          return {
+            leftSelectedText: leftSelected ? leftSelected.text.trim() : null,
+            leftSelectedIndex: leftSelect.selectedIndex,
+            rightOptionsCount: rightOptions.length,
+            rightFirstOptions: rightOptions.slice(0, 5)
+          };
+        }
+        return null;
+      });
+
+      if (verifyResult) {
+        console.log('           【選択確認】');
+        console.log('             左側選択中: "' + verifyResult.leftSelectedText + '" (index: ' + verifyResult.leftSelectedIndex + ')');
+        console.log('             右側オプション数: ' + verifyResult.rightOptionsCount);
+        console.log('             右側先頭5件: ' + verifyResult.rightFirstOptions.join(', '));
+      }
+
       await this.page.screenshot({ path: 'debug-location-guide-6.png' });
 
       // Step 8: 町丁目を選択（2番目のselect - AIに選んでもらう）
@@ -691,7 +722,7 @@ ${JSON.stringify(context, null, 2)}
       // 駅の選択肢を取得してキャッシュに保存
       const stationOptions = await this.getSelectOptions(0);
       if (stationOptions.length > 0 && prefecture && lineName) {
-        const added = reinsCache.addLine(prefecture, lineName, stationOptions);
+        const added = await reinsCache.addLine(prefecture, lineName, stationOptions);
         if (added > 0) {
           console.log(`  [Cache] ${added}件の駅をキャッシュに保存 (${lineName})`);
         }
@@ -932,9 +963,42 @@ ${JSON.stringify(context, null, 2)}
 
       // ========== Phase 3: 選択実行 ==========
       if (bestMatch && !bestMatch.disabled) {
+        // 方法1: optionをクリックしてVueの反応をトリガー
+        const optionIndex = options.indexOf(bestMatch);
+
+        // まずselectをフォーカス
+        select.focus();
+
+        // selectedIndexを設定（これがVueの反応をトリガーする場合がある）
+        select.selectedIndex = optionIndex;
+
+        // 値も設定
         select.value = bestMatch.value;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // 複数のイベントを発火してVue/Bootstrap-Vueの反応を確保
+        // MouseEventでオプションをクリック
+        bestMatch.selected = true;
+
+        // 各種イベントを発火
+        select.dispatchEvent(new Event('focus', { bubbles: true }));
+        select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        select.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Vue 3 / Vue 2 の InputEvent もトリガー
+        try {
+          select.dispatchEvent(new InputEvent('input', { bubbles: true, data: bestMatch.value }));
+        } catch (e) {
+          // InputEvent がサポートされていない場合は無視
+        }
+
+        // blur して再度変更を確定
+        select.blur();
+        select.focus();
+
+        console.log('【選択実行】index=' + optionIndex + ', value=' + bestMatch.value + ', text=' + bestMatch.text.trim());
+
         return {
           found: true,
           selectId: select.id,
@@ -943,7 +1007,8 @@ ${JSON.stringify(context, null, 2)}
           matchType: matchType,
           searchText: text,
           totalOptions: allOptions.length,
-          availableOptions: allOptions.slice(0, 10).map(o => o.text)
+          availableOptions: allOptions.slice(0, 10).map(o => o.text),
+          selectedIndex: optionIndex
         };
       }
 
@@ -1052,7 +1117,7 @@ ${JSON.stringify(context, null, 2)}
       if (prefecture && ward && result.availableOptions) {
         const townNames = result.availableOptions.filter(t => t && t !== '全域');
         if (townNames.length > 0) {
-          const added = reinsCache.addTowns(prefecture, ward, ward, townNames);
+          const added = await reinsCache.addTowns(prefecture, ward, ward, townNames);
           if (added > 0) {
             console.log(`           [Cache] ${added}件の町丁目をキャッシュに保存`);
           }
@@ -1106,7 +1171,7 @@ ${JSON.stringify(context, null, 2)}
         .map(o => o.text)
         .filter(t => t && t !== '全域');
       if (townNames.length > 0) {
-        const added = reinsCache.addTowns(prefecture, city || ward, ward, townNames);
+        const added = await reinsCache.addTowns(prefecture, city || ward, ward, townNames);
         if (added > 0) {
           console.log(`           [Cache] ${added}件の町丁目をキャッシュに保存`);
         }
@@ -1238,16 +1303,46 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
 
       // 最初の有効なオプションを選択
       let firstOption = options[0];
-      for (const option of options) {
-        if (!option.disabled && option.value) {
-          firstOption = option;
+      let firstOptionIndex = 0;
+      for (let i = 0; i < options.length; i++) {
+        if (!options[i].disabled && options[i].value) {
+          firstOption = options[i];
+          firstOptionIndex = i;
           break;
         }
       }
 
+      // フォーカスしてから選択
+      select.focus();
+
+      // selectedIndexを設定
+      select.selectedIndex = firstOptionIndex;
+
+      // 値も設定
       select.value = firstOption.value;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // オプションを選択状態に
+      firstOption.selected = true;
+
+      // 複数のイベントを発火してVue/Bootstrap-Vueの反応を確保
+      select.dispatchEvent(new Event('focus', { bubbles: true }));
+      select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      select.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Vue 3 / Vue 2 の InputEvent もトリガー
+      try {
+        select.dispatchEvent(new InputEvent('input', { bubbles: true, data: firstOption.value }));
+      } catch (e) {
+        // InputEvent がサポートされていない場合は無視
+      }
+
+      // blur して再度変更を確定
+      select.blur();
+      select.focus();
+
+      console.log('【選択実行】index=' + firstOptionIndex + ', value=' + firstOption.value + ', text=' + firstOption.text.trim());
 
       return {
         found: true,
@@ -1255,7 +1350,8 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
         selectedValue: firstOption.value,
         selectedText: firstOption.text,
         totalOptions: options.length,
-        availableOptions: allOptions.slice(0, 10).map(o => o.text)
+        availableOptions: allOptions.slice(0, 10).map(o => o.text),
+        selectedIndex: firstOptionIndex
       };
     }, selectIndex);
 
@@ -1685,11 +1781,13 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
 
         try {
           // 沿線が指定されている場合、入力ガイドで選択を試みる
+          const lineGuideIndex = userRequirements.lineGuideIndex || 3;  // デフォルトは沿線1
           const lineSelected = await this.selectLineViaGuide(
             prefecture,
             line,
             startStation || station,  // 始発駅（単一駅指定の場合は両方に同じ駅）
-            endStation || station      // 終点駅
+            endStation || station,     // 終点駅
+            lineGuideIndex             // 沿線セクションのインデックス
           );
 
           if (lineSelected) {
@@ -1768,7 +1866,7 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
         '__BVID__481': '面積（下限）',
         '__BVID__483': '面積（上限）',
         '__BVID__520': '階数（下限）',
-        '__BVID__385': '徒歩分数'
+        '__WALK_MINUTES__': '徒歩分数'
       };
 
       const selectNames = {
@@ -1783,15 +1881,70 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
         if (fieldId === '__BVID__329') continue;
         if (fieldId === '__BVID__567') continue;
 
-        const clicked = await this.page.evaluate((id) => {
-          const input = document.getElementById(id);
-          if (input) {
-            input.focus();
-            input.click();
-            return true;
-          }
-          return false;
-        }, fieldId);
+        let clicked = false;
+
+        // 徒歩分数は動的にフィールドを検索（BVIDは毎回変わる可能性があるため）
+        if (fieldId === '__WALK_MINUTES__') {
+          // 沿線セクションに対応する徒歩分数フィールドを選択
+          // lineGuideIndex: 沿線1=3, 沿線2=4, 沿線3=5
+          // walkFieldIndex: 沿線1=0, 沿線2=1, 沿線3=2
+          const lineGuideIndex = userRequirements.lineGuideIndex || 3;
+          const walkFieldIndex = lineGuideIndex - 3;
+
+          clicked = await this.page.evaluate((targetIndex) => {
+            // 沿線エリア内で maxLength=5 の入力フィールドを探す
+            // 駅名入力欄の下にある、左側の maxLength=5 フィールドが徒歩分数
+            const allInputs = Array.from(document.querySelectorAll('input[type="text"][maxlength="5"]'));
+
+            // 位置情報を取得して、最も上かつ左にあるものを選択
+            const inputsWithPosition = allInputs.map(input => {
+              const rect = input.getBoundingClientRect();
+              return { input, top: rect.top, left: rect.left, id: input.id };
+            }).filter(item => item.top > 0 && item.left > 0); // 表示されているもののみ
+
+            // top でソートし、同じ top なら left でソート
+            inputsWithPosition.sort((a, b) => {
+              if (Math.abs(a.top - b.top) < 10) { // 同じ行とみなす
+                return a.left - b.left; // 左側を優先
+              }
+              return a.top - b.top; // 上を優先
+            });
+
+            console.log('[徒歩分数] 検出されたmaxLength=5フィールド:', inputsWithPosition.length, '件');
+            console.log('[徒歩分数] targetIndex:', targetIndex);
+
+            // 指定されたインデックスの徒歩分数フィールドを選択
+            if (inputsWithPosition.length > targetIndex) {
+              const target = inputsWithPosition[targetIndex].input;
+              target.focus();
+              target.click();
+              console.log('[徒歩分数] 沿線' + (targetIndex + 1) + 'のフィールドを選択: id=' + target.id);
+              return true;
+            }
+
+            // フォールバック: 最初のフィールドを使用
+            if (inputsWithPosition.length > 0) {
+              const target = inputsWithPosition[0].input;
+              target.focus();
+              target.click();
+              console.log('[徒歩分数] フォールバック: 最初のフィールドを選択: id=' + target.id);
+              return true;
+            }
+
+            console.log('[徒歩分数] maxLength=5 の入力フィールドが見つかりません');
+            return false;
+          }, walkFieldIndex);
+        } else {
+          clicked = await this.page.evaluate((id) => {
+            const input = document.getElementById(id);
+            if (input) {
+              input.focus();
+              input.click();
+              return true;
+            }
+            return false;
+          }, fieldId);
+        }
 
         if (clicked) {
           await this.page.keyboard.down('Control');
@@ -3399,6 +3552,7 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
       conditions.station = option.station;
       conditions.stationTo = option.stationTo || null;
       conditions.walkMinutes = option.walkMinutes || null;
+      conditions.lineGuideIndex = option.lineGuideIndex || 3;  // 沿線1=3, 沿線2=4, 沿線3=5
       // 清除所在地信息
       conditions.cities = [];
     }
@@ -3427,9 +3581,9 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
       textInputs['__BVID__520'] = baseConditions.floorMin.toString();
     }
 
-    // 徒歩分数
+    // 徒歩分数（動的にフィールドを検索するため特殊キーを使用）
     if (option.walkMinutes) {
-      textInputs['__BVID__385'] = option.walkMinutes.toString();
+      textInputs['__WALK_MINUTES__'] = option.walkMinutes.toString();
     }
 
     // 构建 selects
@@ -3510,6 +3664,7 @@ ${optionTexts.map((t, i) => `${i}. ${t}`).join('\n')}
       station: conditions.station,
       stationTo: conditions.stationTo,
       walkMinutes: conditions.walkMinutes,
+      lineGuideIndex: conditions.lineGuideIndex || 3,  // 沿線セクションのインデックス
       locations: option.city ? [{
         prefecture: option.prefecture,
         city: option.city,
